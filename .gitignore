@@ -5,3 +5,4 @@ dist/
 logs/
 *.log
 docker-compose.yml
+API_DOCS.md

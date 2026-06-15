@@ -446,16 +446,18 @@ model SampleLaboratory {
 }
 
 model Element {
-  id          String         @id @default(uuid())
-  name        String
-  symbol      String
-  defaultUnit String?
-  description String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  createdById Int?
-  updatedById Int?
-  results     SampleResult[]
+  id              String                 @id @default(uuid())
+  name            String
+  symbol          String
+  defaultUnit     String?
+  description     String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  createdById     Int?
+  updatedById     Int?
+  results         SampleResult[]
+  interiorResults InteriorSampleResult[]
+  surfaceResults  SurfaceSampleResult[]
 
   @@unique([symbol, defaultUnit])
   @@index([symbol])
@@ -501,6 +503,228 @@ model SampleQAQC {
   sample           Sample   @relation(fields: [sampleId], references: [id])
 
   @@index([sampleId])
+}
+
+////////////////////////////////
+// INTERIOR MINA - PROPUESTA DE MUESTRAS
+////////////////////////////////
+
+model InteriorArea {
+  id           String          @id @default(uuid())
+  name         String
+  abbreviation String          @unique
+  description  String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  createdById  Int?
+  updatedById  Int?
+  levels       InteriorLevel[]
+}
+
+model InteriorLevel {
+  id             String          @id @default(uuid())
+  interiorAreaId String
+  name           String
+  abbreviation   String
+  elevation      Float?
+  description    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  createdById    Int?
+  updatedById    Int?
+  area           InteriorArea    @relation(fields: [interiorAreaId], references: [id])
+  labors         InteriorLabor[]
+
+  @@unique([interiorAreaId, abbreviation])
+  @@index([interiorAreaId])
+}
+
+model InteriorLabor {
+  id              String           @id @default(uuid())
+  interiorLevelId String
+  name            String
+  abbreviation    String
+  description     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  createdById     Int?
+  updatedById     Int?
+  level           InteriorLevel    @relation(fields: [interiorLevelId], references: [id])
+  samples         InteriorSample[]
+
+  @@unique([interiorLevelId, abbreviation])
+  @@index([interiorLevelId])
+}
+
+model InteriorObjective {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  createdById Int?
+  updatedById Int?
+  samples     InteriorSample[]
+}
+
+model InteriorLaboratory {
+  id           String                  @id @default(uuid())
+  name         String                  @unique
+  abbreviation String?
+  description  String?
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  createdById  Int?
+  updatedById  Int?
+  assignments  InteriorLabAssignment[]
+}
+
+model InteriorSample {
+  id                  String                  @id @default(uuid())
+  interiorLaborId     String
+  interiorObjectiveId String
+  code                String                  @unique
+  sequentialNumber    Int
+  east                Float?
+  north               Float?
+  elevation           Float?
+  sampledAt           DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  createdById         Int?
+  updatedById         Int?
+  labor               InteriorLabor           @relation(fields: [interiorLaborId], references: [id])
+  objective           InteriorObjective       @relation(fields: [interiorObjectiveId], references: [id])
+  labAssignments      InteriorLabAssignment[]
+  results             InteriorSampleResult[]
+
+  @@unique([interiorLaborId, sequentialNumber])
+  @@index([interiorLaborId])
+  @@index([interiorObjectiveId])
+  @@index([east, north])
+}
+
+model InteriorLabAssignment {
+  id                   String             @id @default(uuid())
+  interiorSampleId     String
+  interiorLaboratoryId String
+  slot                 String
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  createdById          Int?
+  updatedById          Int?
+  sample               InteriorSample     @relation(fields: [interiorSampleId], references: [id])
+  laboratory           InteriorLaboratory @relation(fields: [interiorLaboratoryId], references: [id])
+
+  @@unique([interiorSampleId, slot])
+  @@index([interiorSampleId])
+  @@index([interiorLaboratoryId])
+}
+
+model InteriorSampleResult {
+  id               String         @id @default(uuid())
+  interiorSampleId String
+  elementId        String
+  value            Float?
+  unit             String?
+  qualifier        String?
+  comments         String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  createdById      Int?
+  updatedById      Int?
+  sample           InteriorSample @relation(fields: [interiorSampleId], references: [id])
+  element          Element        @relation(fields: [elementId], references: [id])
+
+  @@unique([interiorSampleId, elementId])
+  @@index([interiorSampleId])
+  @@index([elementId])
+}
+
+////////////////////////////////
+// SUPERFICIE - PROPUESTA DE MUESTRAS
+////////////////////////////////
+
+model SurfaceArea {
+  id           String          @id @default(uuid())
+  name         String
+  abbreviation String          @unique
+  description  String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  createdById  Int?
+  updatedById  Int?
+  samples      SurfaceSample[]
+}
+
+model SurfaceObjective {
+  id          String          @id @default(uuid())
+  name        String          @unique
+  description String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  createdById Int?
+  updatedById Int?
+  samples     SurfaceSample[]
+}
+
+model SurfaceLaboratory {
+  id           String                @id @default(uuid())
+  name         String                @unique
+  abbreviation String?
+  description  String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  createdById  Int?
+  updatedById  Int?
+  results      SurfaceSampleResult[]
+}
+
+model SurfaceSample {
+  id                 String                @id @default(uuid())
+  surfaceAreaId      String
+  surfaceObjectiveId String
+  code               String                @unique
+  sequentialNumber   Int
+  east               Float?
+  north              Float?
+  elevation          Float?
+  sampledAt          DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  createdById        Int?
+  updatedById        Int?
+  area               SurfaceArea           @relation(fields: [surfaceAreaId], references: [id])
+  objective          SurfaceObjective      @relation(fields: [surfaceObjectiveId], references: [id])
+  results            SurfaceSampleResult[]
+
+  @@unique([surfaceAreaId, sequentialNumber])
+  @@index([surfaceAreaId])
+  @@index([surfaceObjectiveId])
+  @@index([east, north])
+}
+
+model SurfaceSampleResult {
+  id                  String             @id @default(uuid())
+  surfaceSampleId     String
+  elementId           String
+  surfaceLaboratoryId String?
+  value               Float?
+  unit                String?
+  qualifier           String?
+  comments            String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  createdById         Int?
+  updatedById         Int?
+  sample              SurfaceSample      @relation(fields: [surfaceSampleId], references: [id])
+  element             Element            @relation(fields: [elementId], references: [id])
+  laboratory          SurfaceLaboratory? @relation(fields: [surfaceLaboratoryId], references: [id])
+
+  @@unique([surfaceSampleId, elementId])
+  @@index([surfaceSampleId])
+  @@index([elementId])
+  @@index([surfaceLaboratoryId])
 }
 
 ////////////////////////////////
