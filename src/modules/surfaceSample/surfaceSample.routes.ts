@@ -4,6 +4,7 @@ import { authenticate } from "../../middleware/auth.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import {
   createSurfaceAreaSchema,
+  createSurfaceLabAssignmentSchema,
   createSurfaceLaboratorySchema,
   createSurfaceObjectiveSchema,
   createSurfaceSampleResultSchema,
@@ -11,11 +12,13 @@ import {
   createSurfaceSampleWithResultsSchema,
   idSchema,
   surfaceAreaQuerySchema,
+  surfaceLabAssignmentQuerySchema,
   surfaceLaboratoryQuerySchema,
   surfaceObjectiveQuerySchema,
   surfaceSampleQuerySchema,
   surfaceSampleResultQuerySchema,
   updateSurfaceAreaSchema,
+  updateSurfaceLabAssignmentSchema,
   updateSurfaceLaboratorySchema,
   updateSurfaceObjectiveSchema,
   updateSurfaceSampleResultSchema,
@@ -62,6 +65,13 @@ router.get("/laboratories/:id", vp(idSchema), surfaceSampleController.getSurface
 router.post("/laboratories", validate(createSurfaceLaboratorySchema), surfaceSampleController.createSurfaceLaboratory);
 router.patch("/laboratories/:id", vp(idSchema), validate(updateSurfaceLaboratorySchema), surfaceSampleController.updateSurfaceLaboratory);
 router.delete("/laboratories/:id", vp(idSchema), surfaceSampleController.deleteSurfaceLaboratory);
+
+// ─── SurfaceLabAssignment ─────────────────────────────────────────────────────
+router.get("/lab-assignments", vq(surfaceLabAssignmentQuerySchema), surfaceSampleController.getSurfaceLabAssignments);
+router.get("/lab-assignments/:id", vp(idSchema), surfaceSampleController.getSurfaceLabAssignmentById);
+router.post("/lab-assignments", validate(createSurfaceLabAssignmentSchema), surfaceSampleController.createSurfaceLabAssignment);
+router.patch("/lab-assignments/:id", vp(idSchema), validate(updateSurfaceLabAssignmentSchema), surfaceSampleController.updateSurfaceLabAssignment);
+router.delete("/lab-assignments/:id", vp(idSchema), surfaceSampleController.deleteSurfaceLabAssignment);
 
 // ─── SurfaceSample (transactional) ───────────────────────────────────────────
 router.get("/samples/with-results", vq(surfaceSampleQuerySchema), surfaceSampleController.getSurfaceSamples);

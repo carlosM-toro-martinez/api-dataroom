@@ -54,16 +54,33 @@ export const updateSurfaceLaboratorySchema = z.object({
   description: z.string().optional(),
 }).strict();
 
+// ─── SurfaceLabAssignment ────────────────────────────────────────────────────
+export const surfaceLabAssignmentQuerySchema = pagination.extend({
+  surfaceSampleId: z.string().uuid().optional(),
+  surfaceLaboratoryId: z.string().uuid().optional(),
+});
+
+export const createSurfaceLabAssignmentSchema = z.object({
+  surfaceSampleId: z.string().uuid(),
+  surfaceLaboratoryId: z.string().uuid(),
+}).strict();
+
+export const updateSurfaceLabAssignmentSchema = z.object({
+  surfaceLaboratoryId: z.string().uuid().optional(),
+}).strict();
+
 // ─── SurfaceSample ────────────────────────────────────────────────────────────
 export const surfaceSampleQuerySchema = pagination.extend({
   surfaceAreaId: z.string().uuid().optional(),
   surfaceObjectiveId: z.string().uuid().optional(),
+  createdById: z.coerce.number().int().positive().optional(),
   search: z.string().optional(),
 });
 
 export const createSurfaceSampleSchema = z.object({
   surfaceAreaId: z.string().uuid(),
   surfaceObjectiveId: z.string().uuid(),
+  name: z.string().min(1).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -72,6 +89,7 @@ export const createSurfaceSampleSchema = z.object({
 
 export const updateSurfaceSampleSchema = z.object({
   surfaceObjectiveId: z.string().uuid().optional(),
+  name: z.string().min(1).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -81,14 +99,13 @@ export const updateSurfaceSampleSchema = z.object({
 // ─── SurfaceSampleResult ──────────────────────────────────────────────────────
 export const surfaceSampleResultQuerySchema = pagination.extend({
   surfaceSampleId: z.string().uuid().optional(),
+  surfaceLabAssignmentId: z.string().uuid().optional(),
   elementId: z.string().uuid().optional(),
-  surfaceLaboratoryId: z.string().uuid().optional(),
 });
 
 export const createSurfaceSampleResultSchema = z.object({
-  surfaceSampleId: z.string().uuid(),
+  surfaceLabAssignmentId: z.string().uuid(),
   elementId: z.string().uuid(),
-  surfaceLaboratoryId: z.string().uuid().optional(),
   value: z.number().optional(),
   unit: z.string().optional(),
   qualifier: z.string().optional(),
@@ -97,45 +114,53 @@ export const createSurfaceSampleResultSchema = z.object({
 
 export const updateSurfaceSampleResultSchema = z.object({
   elementId: z.string().uuid().optional(),
-  surfaceLaboratoryId: z.string().uuid().optional(),
   value: z.number().optional(),
   unit: z.string().optional(),
   qualifier: z.string().optional(),
   comments: z.string().optional(),
 }).strict();
 
-// ─── SurfaceSample with everything (bulk transaction) ─────────────────────────
+// ─── SurfaceSample con todo (transacción) ────────────────────────────────────
 const resultEntrySchema = z.object({
   elementId: z.string().uuid(),
+  value: z.number().optional(),
+  unit: z.string().optional(),
+  qualifier: z.string().optional(),
+  comments: z.string().optional(),
+}).strict();
+
+const labAssignmentEntrySchema = z.object({
   surfaceLaboratoryId: z.string().uuid().optional(),
   laboratory: z.object({
     name: z.string().min(1),
     abbreviation: z.string().optional(),
     description: z.string().optional(),
   }).strict().optional(),
-  value: z.number().optional(),
-  unit: z.string().optional(),
-  qualifier: z.string().optional(),
-  comments: z.string().optional(),
-}).strict();
+  results: z.array(resultEntrySchema).default([]),
+}).strict().refine(
+  (d) => d.surfaceLaboratoryId || d.laboratory,
+  { message: "Each lab assignment must have either surfaceLaboratoryId or a laboratory object" }
+);
 
 export const createSurfaceSampleWithResultsSchema = z.object({
   surfaceAreaId: z.string().uuid(),
   surfaceObjectiveId: z.string().uuid(),
+  name: z.string().min(1).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
   sampledAt: z.string().datetime().optional(),
-  results: z.array(resultEntrySchema).default([]),
+  labAssignments: z.array(labAssignmentEntrySchema).default([]),
 }).strict();
 
 export const updateSurfaceSampleWithResultsSchema = z.object({
   surfaceObjectiveId: z.string().uuid().optional(),
+  name: z.string().min(1).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
   sampledAt: z.string().datetime().optional(),
-  results: z.array(resultEntrySchema).optional(),
+  labAssignments: z.array(labAssignmentEntrySchema).optional(),
 }).strict();
 
 export const idSchema = z.object({ id: z.string().uuid() });

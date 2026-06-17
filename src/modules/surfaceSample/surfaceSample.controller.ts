@@ -83,6 +83,28 @@ export const surfaceSampleController = {
     catch (e) { fail(res, e); }
   },
 
+  // ─── SurfaceLabAssignment ─────────────────────────────────────────────────
+  async getSurfaceLabAssignments(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceLabAssignments(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async getSurfaceLabAssignmentById(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceLabAssignmentById(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+  async createSurfaceLabAssignment(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.createSurfaceLabAssignment(req.body, uid(req)), 201); }
+    catch (e) { fail(res, e); }
+  },
+  async updateSurfaceLabAssignment(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.updateSurfaceLabAssignment(vp(req).id, req.body, uid(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async deleteSurfaceLabAssignment(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.deleteSurfaceLabAssignment(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+
   // ─── SurfaceSample ────────────────────────────────────────────────────────
   async getSurfaceSamples(req: AuthRequest, res: Response) {
     try { ok(res, await surfaceSampleService.getSurfaceSamples(vq(req))); }
@@ -105,7 +127,7 @@ export const surfaceSampleController = {
     catch (e) { fail(res, e); }
   },
 
-  // ─── SurfaceSample with results (transaction) ─────────────────────────────
+  // ─── SurfaceSample con resultados (transacción) ───────────────────────────
   async createSurfaceSampleWithResults(req: AuthRequest, res: Response) {
     try { ok(res, await surfaceSampleService.createSurfaceSampleWithResults(req.body, uid(req)), 201); }
     catch (e) { fail(res, e); }

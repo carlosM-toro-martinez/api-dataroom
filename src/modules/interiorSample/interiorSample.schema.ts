@@ -102,12 +102,14 @@ export const updateInteriorLaboratorySchema = z.object({
 export const interiorSampleQuerySchema = pagination.extend({
   interiorLaborId: z.string().uuid().optional(),
   interiorObjectiveId: z.string().uuid().optional(),
+  createdById: z.coerce.number().int().positive().optional(),
   search: z.string().optional(),
 });
 
 export const createInteriorSampleSchema = z.object({
   interiorLaborId: z.string().uuid(),
   interiorObjectiveId: z.string().uuid(),
+  name: z.string().min(1).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -116,6 +118,7 @@ export const createInteriorSampleSchema = z.object({
 
 export const updateInteriorSampleSchema = z.object({
   interiorObjectiveId: z.string().uuid().optional(),
+  name: z.string().min(1).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -143,11 +146,12 @@ export const updateInteriorLabAssignmentSchema = z.object({
 // ─── InteriorSampleResult ─────────────────────────────────────────────────────
 export const interiorSampleResultQuerySchema = pagination.extend({
   interiorSampleId: z.string().uuid().optional(),
+  interiorLabAssignmentId: z.string().uuid().optional(),
   elementId: z.string().uuid().optional(),
 });
 
 export const createInteriorSampleResultSchema = z.object({
-  interiorSampleId: z.string().uuid(),
+  interiorLabAssignmentId: z.string().uuid(),
   elementId: z.string().uuid(),
   value: z.number().optional(),
   unit: z.string().optional(),
@@ -163,20 +167,7 @@ export const updateInteriorSampleResultSchema = z.object({
   comments: z.string().optional(),
 }).strict();
 
-// ─── InteriorSample with everything (bulk transaction) ───────────────────────
-const labAssignmentEntrySchema = z.object({
-  slot: z.enum(LAB_SLOTS),
-  interiorLaboratoryId: z.string().uuid().optional(),
-  laboratory: z.object({
-    name: z.string().min(1),
-    abbreviation: z.string().optional(),
-    description: z.string().optional(),
-  }).strict().optional(),
-}).strict().refine(
-  (d) => d.interiorLaboratoryId || d.laboratory,
-  { message: "Each lab assignment must have either interiorLaboratoryId or a laboratory object" }
-);
-
+// ─── InteriorSample con todo (transacción) ───────────────────────────────────
 const resultEntrySchema = z.object({
   elementId: z.string().uuid(),
   value: z.number().optional(),
@@ -185,25 +176,39 @@ const resultEntrySchema = z.object({
   comments: z.string().optional(),
 }).strict();
 
+const labAssignmentEntrySchema = z.object({
+  slot: z.enum(LAB_SLOTS),
+  interiorLaboratoryId: z.string().uuid().optional(),
+  laboratory: z.object({
+    name: z.string().min(1),
+    abbreviation: z.string().optional(),
+    description: z.string().optional(),
+  }).strict().optional(),
+  results: z.array(resultEntrySchema).default([]),
+}).strict().refine(
+  (d) => d.interiorLaboratoryId || d.laboratory,
+  { message: "Each lab assignment must have either interiorLaboratoryId or a laboratory object" }
+);
+
 export const createInteriorSampleWithResultsSchema = z.object({
   interiorLaborId: z.string().uuid(),
   interiorObjectiveId: z.string().uuid(),
+  name: z.string().min(1).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
   sampledAt: z.string().datetime().optional(),
   labAssignments: z.array(labAssignmentEntrySchema).default([]),
-  results: z.array(resultEntrySchema).default([]),
 }).strict();
 
 export const updateInteriorSampleWithResultsSchema = z.object({
   interiorObjectiveId: z.string().uuid().optional(),
+  name: z.string().min(1).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
   sampledAt: z.string().datetime().optional(),
   labAssignments: z.array(labAssignmentEntrySchema).optional(),
-  results: z.array(resultEntrySchema).optional(),
 }).strict();
 
 export const idSchema = z.object({ id: z.string().uuid() });

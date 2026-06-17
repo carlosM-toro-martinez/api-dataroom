@@ -38,6 +38,7 @@ const pg = (q: any) => {
 
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
 
+// Resultados anidados dentro de cada asignación de laboratorio
 const FULL_SAMPLE_INCLUDE = {
   labor: {
     include: {
@@ -45,13 +46,16 @@ const FULL_SAMPLE_INCLUDE = {
     },
   },
   objective: { select: { id: true, name: true } },
+  createdBy: { select: { id: true, nombre: true } },
   labAssignments: {
-    include: { laboratory: { select: { id: true, name: true, abbreviation: true } } },
+    include: {
+      laboratory: { select: { id: true, name: true, abbreviation: true } },
+      results: {
+        include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
+        orderBy: { createdAt: "asc" as const },
+      },
+    },
     orderBy: { slot: "asc" as const },
-  },
-  results: {
-    include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
-    orderBy: { createdAt: "asc" as const },
   },
 } as const;
 
@@ -373,12 +377,13 @@ export const interiorSampleService = {
     return prisma.interiorLaboratory.delete({ where: { id } });
   },
 
-  // ─── InteriorSample (basic) ───────────────────────────────────────────────
+  // ─── InteriorSample (básico) ──────────────────────────────────────────────
   async getInteriorSamples(query: InteriorSampleQuery) {
     const { p, l, skip } = pg(query);
     const where: any = {};
     if (query.interiorLaborId) where.interiorLaborId = query.interiorLaborId;
     if (query.interiorObjectiveId) where.interiorObjectiveId = query.interiorObjectiveId;
+    if (query.createdById) where.createdById = query.createdById;
     if (query.search) where.code = { contains: query.search, mode: "insensitive" as const };
     const [data, total] = await Promise.all([
       prisma.interiorSample.findMany({
@@ -413,8 +418,9 @@ export const interiorSampleService = {
 
     return prisma.$transaction(async (tx) => {
       const count = await tx.interiorSample.count({ where: { interiorLaborId: data.interiorLaborId } });
-      const sequentialNumber = count + 1;
-      const code = `${labor.level.area.abbreviation}/${labor.level.abbreviation}/${labor.abbreviation}/${String(sequentialNumber).padStart(3, "0")}`;
+      const codeStart = parseInt(process.env.INTERIOR_SAMPLE_CODE_START ?? "1");
+      const sequentialNumber = count + codeStart;
+      const code = `${labor.level.area.abbreviation}/${labor.level.abbreviation}/${labor.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
       const sample = await tx.interiorSample.create({
         data: {
           ...data,
@@ -458,7 +464,7 @@ export const interiorSampleService = {
     });
   },
 
-  // ─── InteriorSample with results (transaction) ────────────────────────────
+  // ─── InteriorSample con resultados (transacción) ──────────────────────────
   async createInteriorSampleWithResults(data: CreateInteriorSampleWithResultsDTO, userId?: number) {
     const labor = await prisma.interiorLabor.findUnique({
       where: { id: data.interiorLaborId },
@@ -468,13 +474,6 @@ export const interiorSampleService = {
     const objective = await prisma.interiorObjective.findUnique({ where: { id: data.interiorObjectiveId } });
     if (!objective) throw new HttpError("Interior objective not found", 404);
 
-    if (data.results.length > 0) {
-      const elementIds = [...new Set(data.results.map((r) => r.elementId))];
-      const elements = await prisma.element.findMany({ where: { id: { in: elementIds } } });
-      if (elements.length !== elementIds.length)
-        throw new HttpError("One or more elements not found", 404);
-    }
-
     const existingLabIds = data.labAssignments.flatMap((la) => (la.interiorLaboratoryId ? [la.interiorLaboratoryId] : []));
     if (existingLabIds.length > 0) {
       const labs = await prisma.interiorLaboratory.findMany({ where: { id: { in: existingLabIds } } });
@@ -482,12 +481,20 @@ export const interiorSampleService = {
         throw new HttpError("One or more interior laboratories not found", 404);
     }
 
-    const { results: resultsData, labAssignments: labAssignmentsData, ...sampleFields } = data;
+    const elementIds = [...new Set(data.labAssignments.flatMap((la) => la.results.map((r) => r.elementId)))];
+    if (elementIds.length > 0) {
+      const elements = await prisma.element.findMany({ where: { id: { in: elementIds } } });
+      if (elements.length !== elementIds.length)
+        throw new HttpError("One or more elements not found", 404);
+    }
+
+    const { labAssignments: labAssignmentsData, ...sampleFields } = data;
 
     return prisma.$transaction(async (tx) => {
       const count = await tx.interiorSample.count({ where: { interiorLaborId: data.interiorLaborId } });
-      const sequentialNumber = count + 1;
-      const code = `${labor.level.area.abbreviation}/${labor.level.abbreviation}/${labor.abbreviation}/${String(sequentialNumber).padStart(3, "0")}`;
+      const codeStart = parseInt(process.env.INTERIOR_SAMPLE_CODE_START ?? "1");
+      const sequentialNumber = count + codeStart;
+      const code = `${labor.level.area.abbreviation}/${labor.level.abbreviation}/${labor.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
 
       const sample = await tx.interiorSample.create({
         data: {
@@ -510,7 +517,7 @@ export const interiorSampleService = {
           });
           laboratoryId = lab.id;
         }
-        await tx.interiorLabAssignment.create({
+        const assignment = await tx.interiorLabAssignment.create({
           data: {
             interiorSampleId: sample.id,
             interiorLaboratoryId: laboratoryId!,
@@ -519,25 +526,26 @@ export const interiorSampleService = {
             updatedById: userId,
           } as any,
         });
-      }
 
-      if (resultsData.length > 0) {
-        await tx.interiorSampleResult.createMany({
-          data: resultsData.map((r) => ({
-            interiorSampleId: sample.id,
-            elementId: r.elementId,
-            value: r.value,
-            unit: r.unit,
-            qualifier: r.qualifier,
-            comments: r.comments,
-            createdById: userId,
-            updatedById: userId,
-          })) as any,
-        });
+        for (const rData of laData.results) {
+          await tx.interiorSampleResult.create({
+            data: {
+              interiorSampleId: sample.id,
+              interiorLabAssignmentId: assignment.id,
+              elementId: rData.elementId,
+              value: rData.value,
+              unit: rData.unit,
+              qualifier: rData.qualifier,
+              comments: rData.comments,
+              createdById: userId,
+              updatedById: userId,
+            } as any,
+          });
+        }
       }
 
       logger.info(
-        { sampleId: sample.id, code, labCount: labAssignmentsData.length, resultCount: resultsData.length, userId },
+        { sampleId: sample.id, code, labCount: labAssignmentsData.length, userId },
         "InteriorSample with results created",
       );
 
@@ -546,16 +554,10 @@ export const interiorSampleService = {
   },
 
   async updateInteriorSampleWithResults(id: string, data: UpdateInteriorSampleWithResultsDTO, userId?: number) {
-    const existing = await this.getInteriorSampleById(id);
+    await this.getInteriorSampleById(id);
     if (data.interiorObjectiveId) {
       const obj = await prisma.interiorObjective.findUnique({ where: { id: data.interiorObjectiveId } });
       if (!obj) throw new HttpError("Interior objective not found", 404);
-    }
-    if (data.results && data.results.length > 0) {
-      const elementIds = [...new Set(data.results.map((r) => r.elementId))];
-      const elements = await prisma.element.findMany({ where: { id: { in: elementIds } } });
-      if (elements.length !== elementIds.length)
-        throw new HttpError("One or more elements not found", 404);
     }
     if (data.labAssignments) {
       const existingLabIds = data.labAssignments.flatMap((la) => (la.interiorLaboratoryId ? [la.interiorLaboratoryId] : []));
@@ -564,9 +566,15 @@ export const interiorSampleService = {
         if (labs.length !== new Set(existingLabIds).size)
           throw new HttpError("One or more interior laboratories not found", 404);
       }
+      const elementIds = [...new Set(data.labAssignments.flatMap((la) => la.results.map((r) => r.elementId)))];
+      if (elementIds.length > 0) {
+        const elements = await prisma.element.findMany({ where: { id: { in: elementIds } } });
+        if (elements.length !== elementIds.length)
+          throw new HttpError("One or more elements not found", 404);
+      }
     }
 
-    const { results: resultsData, labAssignments: labAssignmentsData, ...sampleFields } = data;
+    const { labAssignments: labAssignmentsData, ...sampleFields } = data;
 
     return prisma.$transaction(async (tx) => {
       await tx.interiorSample.update({
@@ -579,7 +587,10 @@ export const interiorSampleService = {
       });
 
       if (labAssignmentsData !== undefined) {
+        // Borrar resultados y asignaciones previas
+        await tx.interiorSampleResult.deleteMany({ where: { interiorSampleId: id } });
         await tx.interiorLabAssignment.deleteMany({ where: { interiorSampleId: id } });
+
         for (const laData of labAssignmentsData) {
           let laboratoryId = laData.interiorLaboratoryId;
           if (!laboratoryId && laData.laboratory) {
@@ -590,7 +601,7 @@ export const interiorSampleService = {
             });
             laboratoryId = lab.id;
           }
-          await tx.interiorLabAssignment.create({
+          const assignment = await tx.interiorLabAssignment.create({
             data: {
               interiorSampleId: id,
               interiorLaboratoryId: laboratoryId!,
@@ -599,24 +610,22 @@ export const interiorSampleService = {
               updatedById: userId,
             } as any,
           });
-        }
-      }
 
-      if (resultsData !== undefined) {
-        await tx.interiorSampleResult.deleteMany({ where: { interiorSampleId: id } });
-        if (resultsData.length > 0) {
-          await tx.interiorSampleResult.createMany({
-            data: resultsData.map((r) => ({
-              interiorSampleId: id,
-              elementId: r.elementId,
-              value: r.value,
-              unit: r.unit,
-              qualifier: r.qualifier,
-              comments: r.comments,
-              createdById: userId,
-              updatedById: userId,
-            })) as any,
-          });
+          for (const rData of laData.results) {
+            await tx.interiorSampleResult.create({
+              data: {
+                interiorSampleId: id,
+                interiorLabAssignmentId: assignment.id,
+                elementId: rData.elementId,
+                value: rData.value,
+                unit: rData.unit,
+                qualifier: rData.qualifier,
+                comments: rData.comments,
+                createdById: userId,
+                updatedById: userId,
+              } as any,
+            });
+          }
         }
       }
 
@@ -641,6 +650,9 @@ export const interiorSampleService = {
         include: {
           sample: { select: { id: true, code: true } },
           laboratory: { select: { id: true, name: true, abbreviation: true } },
+          results: {
+            include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
+          },
         },
       }),
       prisma.interiorLabAssignment.count({ where }),
@@ -654,6 +666,9 @@ export const interiorSampleService = {
       include: {
         sample: { select: { id: true, code: true } },
         laboratory: true,
+        results: {
+          include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
+        },
       },
     });
     if (!la) throw new HttpError("Interior lab assignment not found", 404);
@@ -701,7 +716,10 @@ export const interiorSampleService = {
 
   async deleteInteriorLabAssignment(id: string) {
     await this.getInteriorLabAssignmentById(id);
-    return prisma.interiorLabAssignment.delete({ where: { id } });
+    return prisma.$transaction(async (tx) => {
+      await tx.interiorSampleResult.deleteMany({ where: { interiorLabAssignmentId: id } });
+      return tx.interiorLabAssignment.delete({ where: { id } });
+    });
   },
 
   // ─── InteriorSampleResult ─────────────────────────────────────────────────
@@ -709,6 +727,7 @@ export const interiorSampleService = {
     const { p, l, skip } = pg(query);
     const where: any = {};
     if (query.interiorSampleId) where.interiorSampleId = query.interiorSampleId;
+    if (query.interiorLabAssignmentId) where.interiorLabAssignmentId = query.interiorLabAssignmentId;
     if (query.elementId) where.elementId = query.elementId;
     const [data, total] = await Promise.all([
       prisma.interiorSampleResult.findMany({
@@ -718,7 +737,9 @@ export const interiorSampleService = {
         orderBy: { createdAt: "asc" },
         include: {
           element: { select: { id: true, name: true, symbol: true, defaultUnit: true } },
-          sample: { select: { id: true, code: true } },
+          assignment: {
+            include: { laboratory: { select: { id: true, name: true, abbreviation: true } } },
+          },
         },
       }),
       prisma.interiorSampleResult.count({ where }),
@@ -731,7 +752,12 @@ export const interiorSampleService = {
       where: { id },
       include: {
         element: true,
-        sample: { select: { id: true, code: true } },
+        assignment: {
+          include: {
+            laboratory: { select: { id: true, name: true, abbreviation: true } },
+            sample: { select: { id: true, code: true } },
+          },
+        },
       },
     });
     if (!result) throw new HttpError("Interior sample result not found", 404);
@@ -739,18 +765,21 @@ export const interiorSampleService = {
   },
 
   async createInteriorSampleResult(data: CreateInteriorSampleResultDTO, userId?: number) {
-    const [sample, element] = await Promise.all([
-      prisma.interiorSample.findUnique({ where: { id: data.interiorSampleId } }),
-      prisma.element.findUnique({ where: { id: data.elementId } }),
-    ]);
-    if (!sample) throw new HttpError("Interior sample not found", 404);
+    const assignment = await prisma.interiorLabAssignment.findUnique({ where: { id: data.interiorLabAssignmentId } });
+    if (!assignment) throw new HttpError("Interior lab assignment not found", 404);
+    const element = await prisma.element.findUnique({ where: { id: data.elementId } });
     if (!element) throw new HttpError("Element not found", 404);
     const clash = await prisma.interiorSampleResult.findUnique({
-      where: { interiorSampleId_elementId: { interiorSampleId: data.interiorSampleId, elementId: data.elementId } },
+      where: { interiorLabAssignmentId_elementId: { interiorLabAssignmentId: data.interiorLabAssignmentId, elementId: data.elementId } },
     });
-    if (clash) throw new HttpError("Result for this element already exists in this sample", 409);
+    if (clash) throw new HttpError("Result for this element already exists in this lab assignment", 409);
     const result = await prisma.interiorSampleResult.create({
-      data: { ...data, createdById: userId, updatedById: userId } as any,
+      data: {
+        ...data,
+        interiorSampleId: assignment.interiorSampleId,
+        createdById: userId,
+        updatedById: userId,
+      } as any,
     });
     logger.info({ resultId: result.id, userId }, "InteriorSampleResult created");
     return result;
@@ -762,10 +791,10 @@ export const interiorSampleService = {
       const el = await prisma.element.findUnique({ where: { id: data.elementId } });
       if (!el) throw new HttpError("Element not found", 404);
       const clash = await prisma.interiorSampleResult.findUnique({
-        where: { interiorSampleId_elementId: { interiorSampleId: current.interiorSampleId, elementId: data.elementId } },
+        where: { interiorLabAssignmentId_elementId: { interiorLabAssignmentId: current.interiorLabAssignmentId, elementId: data.elementId } },
       });
       if (clash && clash.id !== id)
-        throw new HttpError("Result for this element already exists in this sample", 409);
+        throw new HttpError("Result for this element already exists in this lab assignment", 409);
     }
     const updated = await prisma.interiorSampleResult.update({
       where: { id },

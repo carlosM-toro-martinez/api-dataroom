@@ -3,17 +3,20 @@ import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
 import type {
   CreateSurfaceAreaDTO,
+  CreateSurfaceLabAssignmentDTO,
   CreateSurfaceLaboratoryDTO,
   CreateSurfaceObjectiveDTO,
   CreateSurfaceSampleDTO,
   CreateSurfaceSampleResultDTO,
   CreateSurfaceSampleWithResultsDTO,
   SurfaceAreaQuery,
+  SurfaceLabAssignmentQuery,
   SurfaceLaboratoryQuery,
   SurfaceObjectiveQuery,
   SurfaceSampleQuery,
   SurfaceSampleResultQuery,
   UpdateSurfaceAreaDTO,
+  UpdateSurfaceLabAssignmentDTO,
   UpdateSurfaceLaboratoryDTO,
   UpdateSurfaceObjectiveDTO,
   UpdateSurfaceSampleDTO,
@@ -32,10 +35,14 @@ const toDate = (s?: string | null) => (s ? new Date(s) : null);
 const FULL_SAMPLE_INCLUDE = {
   area: { select: { id: true, name: true, abbreviation: true } },
   objective: { select: { id: true, name: true } },
-  results: {
+  createdBy: { select: { id: true, nombre: true } },
+  labAssignments: {
     include: {
-      element: { select: { id: true, name: true, symbol: true, defaultUnit: true } },
       laboratory: { select: { id: true, name: true, abbreviation: true } },
+      results: {
+        include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
+        orderBy: { createdAt: "asc" as const },
+      },
     },
     orderBy: { createdAt: "asc" as const },
   },
@@ -197,12 +204,98 @@ export const surfaceSampleService = {
     return prisma.surfaceLaboratory.delete({ where: { id } });
   },
 
-  // ─── SurfaceSample (basic) ────────────────────────────────────────────────
+  // ─── SurfaceLabAssignment ─────────────────────────────────────────────────
+  async getSurfaceLabAssignments(query: SurfaceLabAssignmentQuery) {
+    const { p, l, skip } = pg(query);
+    const where: any = {};
+    if (query.surfaceSampleId) where.surfaceSampleId = query.surfaceSampleId;
+    if (query.surfaceLaboratoryId) where.surfaceLaboratoryId = query.surfaceLaboratoryId;
+    const [data, total] = await Promise.all([
+      prisma.surfaceLabAssignment.findMany({
+        where,
+        skip,
+        take: l,
+        orderBy: { createdAt: "asc" },
+        include: {
+          sample: { select: { id: true, code: true } },
+          laboratory: { select: { id: true, name: true, abbreviation: true } },
+          results: {
+            include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
+          },
+        },
+      }),
+      prisma.surfaceLabAssignment.count({ where }),
+    ]);
+    return { data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+  },
+
+  async getSurfaceLabAssignmentById(id: string) {
+    const la = await prisma.surfaceLabAssignment.findUnique({
+      where: { id },
+      include: {
+        sample: { select: { id: true, code: true } },
+        laboratory: true,
+        results: {
+          include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
+        },
+      },
+    });
+    if (!la) throw new HttpError("Surface lab assignment not found", 404);
+    return la;
+  },
+
+  async createSurfaceLabAssignment(data: CreateSurfaceLabAssignmentDTO, userId?: number) {
+    const [sample, lab] = await Promise.all([
+      prisma.surfaceSample.findUnique({ where: { id: data.surfaceSampleId } }),
+      prisma.surfaceLaboratory.findUnique({ where: { id: data.surfaceLaboratoryId } }),
+    ]);
+    if (!sample) throw new HttpError("Surface sample not found", 404);
+    if (!lab) throw new HttpError("Surface laboratory not found", 404);
+    const clash = await prisma.surfaceLabAssignment.findUnique({
+      where: { surfaceSampleId_surfaceLaboratoryId: { surfaceSampleId: data.surfaceSampleId, surfaceLaboratoryId: data.surfaceLaboratoryId } },
+    });
+    if (clash) throw new HttpError("This laboratory is already assigned to this sample", 409);
+    const la = await prisma.surfaceLabAssignment.create({
+      data: { ...data, createdById: userId, updatedById: userId } as any,
+    });
+    logger.info({ laId: la.id, userId }, "SurfaceLabAssignment created");
+    return la;
+  },
+
+  async updateSurfaceLabAssignment(id: string, data: UpdateSurfaceLabAssignmentDTO, userId?: number) {
+    const current = await this.getSurfaceLabAssignmentById(id);
+    if (data.surfaceLaboratoryId) {
+      const lab = await prisma.surfaceLaboratory.findUnique({ where: { id: data.surfaceLaboratoryId } });
+      if (!lab) throw new HttpError("Surface laboratory not found", 404);
+      const clash = await prisma.surfaceLabAssignment.findUnique({
+        where: { surfaceSampleId_surfaceLaboratoryId: { surfaceSampleId: current.surfaceSampleId, surfaceLaboratoryId: data.surfaceLaboratoryId } },
+      });
+      if (clash && clash.id !== id)
+        throw new HttpError("This laboratory is already assigned to this sample", 409);
+    }
+    const updated = await prisma.surfaceLabAssignment.update({
+      where: { id },
+      data: { ...data, updatedById: userId } as any,
+    });
+    logger.info({ laId: id, userId }, "SurfaceLabAssignment updated");
+    return updated;
+  },
+
+  async deleteSurfaceLabAssignment(id: string) {
+    await this.getSurfaceLabAssignmentById(id);
+    return prisma.$transaction(async (tx) => {
+      await tx.surfaceSampleResult.deleteMany({ where: { surfaceLabAssignmentId: id } });
+      return tx.surfaceLabAssignment.delete({ where: { id } });
+    });
+  },
+
+  // ─── SurfaceSample (básico) ───────────────────────────────────────────────
   async getSurfaceSamples(query: SurfaceSampleQuery) {
     const { p, l, skip } = pg(query);
     const where: any = {};
     if (query.surfaceAreaId) where.surfaceAreaId = query.surfaceAreaId;
     if (query.surfaceObjectiveId) where.surfaceObjectiveId = query.surfaceObjectiveId;
+    if (query.createdById) where.createdById = query.createdById;
     if (query.search) where.code = { contains: query.search, mode: "insensitive" as const };
     const [data, total] = await Promise.all([
       prisma.surfaceSample.findMany({
@@ -234,8 +327,9 @@ export const surfaceSampleService = {
 
     return prisma.$transaction(async (tx) => {
       const count = await tx.surfaceSample.count({ where: { surfaceAreaId: data.surfaceAreaId } });
-      const sequentialNumber = count + 1;
-      const code = `${area.abbreviation}/${String(sequentialNumber).padStart(3, "0")}`;
+      const codeStart = parseInt(process.env.SURFACE_SAMPLE_CODE_START ?? "1");
+      const sequentialNumber = count + codeStart;
+      const code = `${area.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
       const sample = await tx.surfaceSample.create({
         data: {
           ...data,
@@ -274,37 +368,39 @@ export const surfaceSampleService = {
     await this.getSurfaceSampleById(id);
     return prisma.$transaction(async (tx) => {
       await tx.surfaceSampleResult.deleteMany({ where: { surfaceSampleId: id } });
+      await tx.surfaceLabAssignment.deleteMany({ where: { surfaceSampleId: id } });
       return tx.surfaceSample.delete({ where: { id } });
     });
   },
 
-  // ─── SurfaceSample with results (transaction) ─────────────────────────────
+  // ─── SurfaceSample con resultados (transacción) ───────────────────────────
   async createSurfaceSampleWithResults(data: CreateSurfaceSampleWithResultsDTO, userId?: number) {
     const area = await prisma.surfaceArea.findUnique({ where: { id: data.surfaceAreaId } });
     if (!area) throw new HttpError("Surface area not found", 404);
     const objective = await prisma.surfaceObjective.findUnique({ where: { id: data.surfaceObjectiveId } });
     if (!objective) throw new HttpError("Surface objective not found", 404);
 
-    if (data.results.length > 0) {
-      const elementIds = [...new Set(data.results.map((r) => r.elementId))];
+    const existingLabIds = data.labAssignments.flatMap((la) => (la.surfaceLaboratoryId ? [la.surfaceLaboratoryId] : []));
+    if (existingLabIds.length > 0) {
+      const labs = await prisma.surfaceLaboratory.findMany({ where: { id: { in: existingLabIds } } });
+      if (labs.length !== new Set(existingLabIds).size)
+        throw new HttpError("One or more surface laboratories not found", 404);
+    }
+
+    const elementIds = [...new Set(data.labAssignments.flatMap((la) => la.results.map((r) => r.elementId)))];
+    if (elementIds.length > 0) {
       const elements = await prisma.element.findMany({ where: { id: { in: elementIds } } });
       if (elements.length !== elementIds.length)
         throw new HttpError("One or more elements not found", 404);
-
-      const existingLabIds = data.results.flatMap((r) => (r.surfaceLaboratoryId ? [r.surfaceLaboratoryId] : []));
-      if (existingLabIds.length > 0) {
-        const labs = await prisma.surfaceLaboratory.findMany({ where: { id: { in: existingLabIds } } });
-        if (labs.length !== new Set(existingLabIds).size)
-          throw new HttpError("One or more surface laboratories not found", 404);
-      }
     }
 
-    const { results: resultsData, ...sampleFields } = data;
+    const { labAssignments: labAssignmentsData, ...sampleFields } = data;
 
     return prisma.$transaction(async (tx) => {
       const count = await tx.surfaceSample.count({ where: { surfaceAreaId: data.surfaceAreaId } });
-      const sequentialNumber = count + 1;
-      const code = `${area.abbreviation}/${String(sequentialNumber).padStart(3, "0")}`;
+      const codeStart = parseInt(process.env.SURFACE_SAMPLE_CODE_START ?? "1");
+      const sequentialNumber = count + codeStart;
+      const code = `${area.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
 
       const sample = await tx.surfaceSample.create({
         data: {
@@ -317,30 +413,44 @@ export const surfaceSampleService = {
         } as any,
       });
 
-      for (const rData of resultsData) {
-        let laboratoryId = rData.surfaceLaboratoryId;
-        if (!laboratoryId && rData.laboratory) {
+      for (const laData of labAssignmentsData) {
+        let laboratoryId = laData.surfaceLaboratoryId;
+        if (!laboratoryId && laData.laboratory) {
           const lab = await tx.surfaceLaboratory.upsert({
-            where: { name: rData.laboratory.name },
-            create: { ...rData.laboratory, createdById: userId, updatedById: userId } as any,
+            where: { name: laData.laboratory.name },
+            create: { ...laData.laboratory, createdById: userId, updatedById: userId } as any,
             update: {},
           });
           laboratoryId = lab.id;
         }
-        const { laboratory: _lab, ...resultFields } = rData;
-        await tx.surfaceSampleResult.create({
+        const assignment = await tx.surfaceLabAssignment.create({
           data: {
-            ...resultFields,
             surfaceSampleId: sample.id,
-            surfaceLaboratoryId: laboratoryId ?? null,
+            surfaceLaboratoryId: laboratoryId!,
             createdById: userId,
             updatedById: userId,
           } as any,
         });
+
+        for (const rData of laData.results) {
+          await tx.surfaceSampleResult.create({
+            data: {
+              surfaceSampleId: sample.id,
+              surfaceLabAssignmentId: assignment.id,
+              elementId: rData.elementId,
+              value: rData.value,
+              unit: rData.unit,
+              qualifier: rData.qualifier,
+              comments: rData.comments,
+              createdById: userId,
+              updatedById: userId,
+            } as any,
+          });
+        }
       }
 
       logger.info(
-        { sampleId: sample.id, code, resultCount: resultsData.length, userId },
+        { sampleId: sample.id, code, labCount: labAssignmentsData.length, userId },
         "SurfaceSample with results created",
       );
 
@@ -354,21 +464,22 @@ export const surfaceSampleService = {
       const obj = await prisma.surfaceObjective.findUnique({ where: { id: data.surfaceObjectiveId } });
       if (!obj) throw new HttpError("Surface objective not found", 404);
     }
-    if (data.results && data.results.length > 0) {
-      const elementIds = [...new Set(data.results.map((r) => r.elementId))];
-      const elements = await prisma.element.findMany({ where: { id: { in: elementIds } } });
-      if (elements.length !== elementIds.length)
-        throw new HttpError("One or more elements not found", 404);
-
-      const existingLabIds = data.results.flatMap((r) => (r.surfaceLaboratoryId ? [r.surfaceLaboratoryId] : []));
+    if (data.labAssignments) {
+      const existingLabIds = data.labAssignments.flatMap((la) => (la.surfaceLaboratoryId ? [la.surfaceLaboratoryId] : []));
       if (existingLabIds.length > 0) {
         const labs = await prisma.surfaceLaboratory.findMany({ where: { id: { in: existingLabIds } } });
         if (labs.length !== new Set(existingLabIds).size)
           throw new HttpError("One or more surface laboratories not found", 404);
       }
+      const elementIds = [...new Set(data.labAssignments.flatMap((la) => la.results.map((r) => r.elementId)))];
+      if (elementIds.length > 0) {
+        const elements = await prisma.element.findMany({ where: { id: { in: elementIds } } });
+        if (elements.length !== elementIds.length)
+          throw new HttpError("One or more elements not found", 404);
+      }
     }
 
-    const { results: resultsData, ...sampleFields } = data;
+    const { labAssignments: labAssignmentsData, ...sampleFields } = data;
 
     return prisma.$transaction(async (tx) => {
       await tx.surfaceSample.update({
@@ -380,28 +491,44 @@ export const surfaceSampleService = {
         } as any,
       });
 
-      if (resultsData !== undefined) {
+      if (labAssignmentsData !== undefined) {
         await tx.surfaceSampleResult.deleteMany({ where: { surfaceSampleId: id } });
-        for (const rData of resultsData) {
-          let laboratoryId = rData.surfaceLaboratoryId;
-          if (!laboratoryId && rData.laboratory) {
+        await tx.surfaceLabAssignment.deleteMany({ where: { surfaceSampleId: id } });
+
+        for (const laData of labAssignmentsData) {
+          let laboratoryId = laData.surfaceLaboratoryId;
+          if (!laboratoryId && laData.laboratory) {
             const lab = await tx.surfaceLaboratory.upsert({
-              where: { name: rData.laboratory.name },
-              create: { ...rData.laboratory, createdById: userId, updatedById: userId } as any,
+              where: { name: laData.laboratory.name },
+              create: { ...laData.laboratory, createdById: userId, updatedById: userId } as any,
               update: {},
             });
             laboratoryId = lab.id;
           }
-          const { laboratory: _lab, ...resultFields } = rData;
-          await tx.surfaceSampleResult.create({
+          const assignment = await tx.surfaceLabAssignment.create({
             data: {
-              ...resultFields,
               surfaceSampleId: id,
-              surfaceLaboratoryId: laboratoryId ?? null,
+              surfaceLaboratoryId: laboratoryId!,
               createdById: userId,
               updatedById: userId,
             } as any,
           });
+
+          for (const rData of laData.results) {
+            await tx.surfaceSampleResult.create({
+              data: {
+                surfaceSampleId: id,
+                surfaceLabAssignmentId: assignment.id,
+                elementId: rData.elementId,
+                value: rData.value,
+                unit: rData.unit,
+                qualifier: rData.qualifier,
+                comments: rData.comments,
+                createdById: userId,
+                updatedById: userId,
+              } as any,
+            });
+          }
         }
       }
 
@@ -415,8 +542,8 @@ export const surfaceSampleService = {
     const { p, l, skip } = pg(query);
     const where: any = {};
     if (query.surfaceSampleId) where.surfaceSampleId = query.surfaceSampleId;
+    if (query.surfaceLabAssignmentId) where.surfaceLabAssignmentId = query.surfaceLabAssignmentId;
     if (query.elementId) where.elementId = query.elementId;
-    if (query.surfaceLaboratoryId) where.surfaceLaboratoryId = query.surfaceLaboratoryId;
     const [data, total] = await Promise.all([
       prisma.surfaceSampleResult.findMany({
         where,
@@ -425,8 +552,9 @@ export const surfaceSampleService = {
         orderBy: { createdAt: "asc" },
         include: {
           element: { select: { id: true, name: true, symbol: true, defaultUnit: true } },
-          sample: { select: { id: true, code: true } },
-          laboratory: { select: { id: true, name: true, abbreviation: true } },
+          assignment: {
+            include: { laboratory: { select: { id: true, name: true, abbreviation: true } } },
+          },
         },
       }),
       prisma.surfaceSampleResult.count({ where }),
@@ -439,8 +567,12 @@ export const surfaceSampleService = {
       where: { id },
       include: {
         element: true,
-        sample: { select: { id: true, code: true } },
-        laboratory: true,
+        assignment: {
+          include: {
+            laboratory: { select: { id: true, name: true, abbreviation: true } },
+            sample: { select: { id: true, code: true } },
+          },
+        },
       },
     });
     if (!result) throw new HttpError("Surface sample result not found", 404);
@@ -448,22 +580,21 @@ export const surfaceSampleService = {
   },
 
   async createSurfaceSampleResult(data: CreateSurfaceSampleResultDTO, userId?: number) {
-    const [sample, element] = await Promise.all([
-      prisma.surfaceSample.findUnique({ where: { id: data.surfaceSampleId } }),
-      prisma.element.findUnique({ where: { id: data.elementId } }),
-    ]);
-    if (!sample) throw new HttpError("Surface sample not found", 404);
+    const assignment = await prisma.surfaceLabAssignment.findUnique({ where: { id: data.surfaceLabAssignmentId } });
+    if (!assignment) throw new HttpError("Surface lab assignment not found", 404);
+    const element = await prisma.element.findUnique({ where: { id: data.elementId } });
     if (!element) throw new HttpError("Element not found", 404);
-    if (data.surfaceLaboratoryId) {
-      const lab = await prisma.surfaceLaboratory.findUnique({ where: { id: data.surfaceLaboratoryId } });
-      if (!lab) throw new HttpError("Surface laboratory not found", 404);
-    }
     const clash = await prisma.surfaceSampleResult.findUnique({
-      where: { surfaceSampleId_elementId: { surfaceSampleId: data.surfaceSampleId, elementId: data.elementId } },
+      where: { surfaceLabAssignmentId_elementId: { surfaceLabAssignmentId: data.surfaceLabAssignmentId, elementId: data.elementId } },
     });
-    if (clash) throw new HttpError("Result for this element already exists in this sample", 409);
+    if (clash) throw new HttpError("Result for this element already exists in this lab assignment", 409);
     const result = await prisma.surfaceSampleResult.create({
-      data: { ...data, createdById: userId, updatedById: userId } as any,
+      data: {
+        ...data,
+        surfaceSampleId: assignment.surfaceSampleId,
+        createdById: userId,
+        updatedById: userId,
+      } as any,
     });
     logger.info({ resultId: result.id, userId }, "SurfaceSampleResult created");
     return result;
@@ -475,14 +606,10 @@ export const surfaceSampleService = {
       const el = await prisma.element.findUnique({ where: { id: data.elementId } });
       if (!el) throw new HttpError("Element not found", 404);
       const clash = await prisma.surfaceSampleResult.findUnique({
-        where: { surfaceSampleId_elementId: { surfaceSampleId: current.surfaceSampleId, elementId: data.elementId } },
+        where: { surfaceLabAssignmentId_elementId: { surfaceLabAssignmentId: current.surfaceLabAssignmentId, elementId: data.elementId } },
       });
       if (clash && clash.id !== id)
-        throw new HttpError("Result for this element already exists in this sample", 409);
-    }
-    if (data.surfaceLaboratoryId) {
-      const lab = await prisma.surfaceLaboratory.findUnique({ where: { id: data.surfaceLaboratoryId } });
-      if (!lab) throw new HttpError("Surface laboratory not found", 404);
+        throw new HttpError("Result for this element already exists in this lab assignment", 409);
     }
     const updated = await prisma.surfaceSampleResult.update({
       where: { id },
