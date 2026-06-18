@@ -524,18 +524,20 @@ model InteriorArea {
 }
 
 model InteriorLevel {
-  id             String          @id @default(uuid())
+  id             String           @id @default(uuid())
   interiorAreaId String
   name           String
   abbreviation   String
+  codeStart      Int              @default(1)
   elevation      Float?
   description    String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   createdById    Int?
   updatedById    Int?
-  area           InteriorArea    @relation(fields: [interiorAreaId], references: [id])
+  area           InteriorArea     @relation(fields: [interiorAreaId], references: [id])
   labors         InteriorLabor[]
+  samples        InteriorSample[] @relation("InteriorSampleLevel")
 
   @@unique([interiorAreaId, abbreviation])
   @@index([interiorAreaId])
@@ -584,6 +586,7 @@ model InteriorLaboratory {
 model InteriorSample {
   id                  String                  @id @default(uuid())
   interiorLaborId     String
+  interiorLevelId     String
   interiorObjectiveId String
   name                String?
   code                String                  @unique
@@ -597,13 +600,15 @@ model InteriorSample {
   createdById         Int?
   updatedById         Int?
   labor               InteriorLabor           @relation(fields: [interiorLaborId], references: [id])
+  level               InteriorLevel           @relation("InteriorSampleLevel", fields: [interiorLevelId], references: [id])
   objective           InteriorObjective       @relation(fields: [interiorObjectiveId], references: [id])
   createdBy           User?                   @relation("InteriorSampleCreatedBy", fields: [createdById], references: [id])
   labAssignments      InteriorLabAssignment[]
-  results             InteriorSampleResult[]   @relation("InteriorSampleToResults")
+  results             InteriorSampleResult[]  @relation("InteriorSampleToResults")
 
-  @@unique([interiorLaborId, sequentialNumber])
+  @@unique([interiorLevelId, sequentialNumber])
   @@index([interiorLaborId])
+  @@index([interiorLevelId])
   @@index([interiorObjectiveId])
   @@index([east, north])
 }

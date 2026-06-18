@@ -34,6 +34,7 @@ export const createInteriorLevelSchema = z.object({
   interiorAreaId: z.string().uuid(),
   name: z.string().min(1),
   abbreviation: z.string().min(1),
+  codeStart: z.number().int().positive().optional(),
   elevation: z.number().optional(),
   description: z.string().optional(),
 }).strict();
@@ -42,6 +43,7 @@ export const updateInteriorLevelSchema = z.object({
   interiorAreaId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
   abbreviation: z.string().min(1).optional(),
+  codeStart: z.number().int().positive().optional(),
   elevation: z.number().optional(),
   description: z.string().optional(),
 }).strict();

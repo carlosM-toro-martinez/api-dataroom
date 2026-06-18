@@ -417,13 +417,13 @@ export const interiorSampleService = {
     if (!objective) throw new HttpError("Interior objective not found", 404);
 
     return prisma.$transaction(async (tx) => {
-      const count = await tx.interiorSample.count({ where: { interiorLaborId: data.interiorLaborId } });
-      const codeStart = parseInt(process.env.INTERIOR_SAMPLE_CODE_START ?? "1");
-      const sequentialNumber = count + codeStart;
+      const count = await tx.interiorSample.count({ where: { interiorLevelId: labor.level.id } });
+      const sequentialNumber = count + labor.level.codeStart;
       const code = `${labor.level.area.abbreviation}/${labor.level.abbreviation}/${labor.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
       const sample = await tx.interiorSample.create({
         data: {
           ...data,
+          interiorLevelId: labor.level.id,
           code,
           sequentialNumber,
           sampledAt: toDate(data.sampledAt),
@@ -491,14 +491,14 @@ export const interiorSampleService = {
     const { labAssignments: labAssignmentsData, ...sampleFields } = data;
 
     return prisma.$transaction(async (tx) => {
-      const count = await tx.interiorSample.count({ where: { interiorLaborId: data.interiorLaborId } });
-      const codeStart = parseInt(process.env.INTERIOR_SAMPLE_CODE_START ?? "1");
-      const sequentialNumber = count + codeStart;
+      const count = await tx.interiorSample.count({ where: { interiorLevelId: labor.level.id } });
+      const sequentialNumber = count + labor.level.codeStart;
       const code = `${labor.level.area.abbreviation}/${labor.level.abbreviation}/${labor.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
 
       const sample = await tx.interiorSample.create({
         data: {
           ...sampleFields,
+          interiorLevelId: labor.level.id,
           code,
           sequentialNumber,
           sampledAt: toDate(sampleFields.sampledAt),
