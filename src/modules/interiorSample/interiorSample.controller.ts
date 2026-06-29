@@ -148,6 +148,10 @@ export const interiorSampleController = {
     try { ok(res, await interiorSampleService.deleteInteriorSample(vp(req).id)); }
     catch (e) { fail(res, e); }
   },
+  async assignInteriorSampleVoucher(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.assignInteriorSampleVoucher(vp(req).id, uid(req))); }
+    catch (e) { fail(res, e); }
+  },
 
   // ─── InteriorSample with results (transaction) ────────────────────────────
   async createInteriorSampleWithResults(req: AuthRequest, res: Response) {

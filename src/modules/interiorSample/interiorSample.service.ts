@@ -384,6 +384,7 @@ export const interiorSampleService = {
     if (query.interiorLaborId) where.interiorLaborId = query.interiorLaborId;
     if (query.interiorObjectiveId) where.interiorObjectiveId = query.interiorObjectiveId;
     if (query.createdById) where.createdById = query.createdById;
+    if (query.priority) where.priority = query.priority;
     if (query.search) where.code = { contains: query.search, mode: "insensitive" as const };
     const [data, total] = await Promise.all([
       prisma.interiorSample.findMany({
@@ -461,6 +462,23 @@ export const interiorSampleService = {
       await tx.interiorSampleResult.deleteMany({ where: { interiorSampleId: id } });
       await tx.interiorLabAssignment.deleteMany({ where: { interiorSampleId: id } });
       return tx.interiorSample.delete({ where: { id } });
+    });
+  },
+
+  async assignInteriorSampleVoucher(id: string, userId?: number) {
+    return prisma.$transaction(async (tx) => {
+      const sample = await tx.interiorSample.findUnique({ where: { id } });
+      if (!sample) throw new HttpError("Interior sample not found", 404);
+      if (sample.voucherNumber !== null)
+        throw new HttpError(`Sample already has voucher number ${sample.voucherNumber}`, 409);
+      const agg = await tx.interiorSample.aggregate({ _max: { voucherNumber: true } });
+      const nextNumber = (agg._max.voucherNumber ?? 0) + 1;
+      logger.info({ sampleId: id, voucherNumber: nextNumber, userId }, "InteriorSample voucher assigned");
+      return tx.interiorSample.update({
+        where: { id },
+        data: { voucherNumber: nextNumber, updatedById: userId } as any,
+        include: FULL_SAMPLE_INCLUDE,
+      });
     });
   },
 

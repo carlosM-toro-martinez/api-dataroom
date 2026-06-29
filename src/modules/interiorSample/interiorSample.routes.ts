@@ -97,6 +97,7 @@ router.get("/samples/:id", vp(idSchema), interiorSampleController.getInteriorSam
 router.post("/samples", validate(createInteriorSampleSchema), interiorSampleController.createInteriorSample);
 router.patch("/samples/:id", vp(idSchema), validate(updateInteriorSampleSchema), interiorSampleController.updateInteriorSample);
 router.delete("/samples/:id", vp(idSchema), interiorSampleController.deleteInteriorSample);
+router.post("/samples/:id/assign-voucher", vp(idSchema), interiorSampleController.assignInteriorSampleVoucher);
 
 // ─── InteriorLabAssignment ────────────────────────────────────────────────────
 router.get("/lab-assignments", vq(interiorLabAssignmentQuerySchema), interiorSampleController.getInteriorLabAssignments);

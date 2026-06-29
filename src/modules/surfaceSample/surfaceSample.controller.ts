@@ -126,6 +126,10 @@ export const surfaceSampleController = {
     try { ok(res, await surfaceSampleService.deleteSurfaceSample(vp(req).id)); }
     catch (e) { fail(res, e); }
   },
+  async assignSurfaceSampleVoucher(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.assignSurfaceSampleVoucher(vp(req).id, uid(req))); }
+    catch (e) { fail(res, e); }
+  },
 
   // ─── SurfaceSample con resultados (transacción) ───────────────────────────
   async createSurfaceSampleWithResults(req: AuthRequest, res: Response) {

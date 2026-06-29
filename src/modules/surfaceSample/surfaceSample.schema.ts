@@ -5,6 +5,8 @@ const pagination = z.object({
   limit: z.coerce.number().int().positive().optional(),
 });
 
+const SAMPLE_PRIORITIES = ["URGENT", "HIGH", "NORMAL", "LOW"] as const;
+
 // ─── SurfaceArea ──────────────────────────────────────────────────────────────
 export const surfaceAreaQuerySchema = pagination.extend({
   search: z.string().optional(),
@@ -74,6 +76,7 @@ export const surfaceSampleQuerySchema = pagination.extend({
   surfaceAreaId: z.string().uuid().optional(),
   surfaceObjectiveId: z.string().uuid().optional(),
   createdById: z.coerce.number().int().positive().optional(),
+  priority: z.enum(SAMPLE_PRIORITIES).optional(),
   search: z.string().optional(),
 });
 
@@ -81,6 +84,8 @@ export const createSurfaceSampleSchema = z.object({
   surfaceAreaId: z.string().uuid(),
   surfaceObjectiveId: z.string().uuid(),
   name: z.string().min(1).optional(),
+  priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -90,6 +95,8 @@ export const createSurfaceSampleSchema = z.object({
 export const updateSurfaceSampleSchema = z.object({
   surfaceObjectiveId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
+  priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -146,6 +153,8 @@ export const createSurfaceSampleWithResultsSchema = z.object({
   surfaceAreaId: z.string().uuid(),
   surfaceObjectiveId: z.string().uuid(),
   name: z.string().min(1).optional(),
+  priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -156,6 +165,8 @@ export const createSurfaceSampleWithResultsSchema = z.object({
 export const updateSurfaceSampleWithResultsSchema = z.object({
   surfaceObjectiveId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
+  priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),

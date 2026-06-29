@@ -591,6 +591,8 @@ model InteriorSample {
   name                String?
   code                String                  @unique
   sequentialNumber    Int
+  voucherNumber       Int?
+  priority            SamplePriority          @default(NORMAL)
   east                Float?
   north               Float?
   elevation           Float?
@@ -610,6 +612,8 @@ model InteriorSample {
   @@index([interiorLaborId])
   @@index([interiorLevelId])
   @@index([interiorObjectiveId])
+  @@index([priority])
+  @@index([voucherNumber])
   @@index([east, north])
 }
 
@@ -700,6 +704,8 @@ model SurfaceSample {
   name               String?
   code               String                 @unique
   sequentialNumber   Int
+  voucherNumber      Int?
+  priority           SamplePriority         @default(NORMAL)
   east               Float?
   north              Float?
   elevation          Float?
@@ -717,6 +723,8 @@ model SurfaceSample {
   @@unique([surfaceAreaId, sequentialNumber])
   @@index([surfaceAreaId])
   @@index([surfaceObjectiveId])
+  @@index([priority])
+  @@index([voucherNumber])
   @@index([east, north])
 }
 
@@ -813,4 +821,11 @@ enum LaboratorySlot {
   L1
   L2
   L3
+}
+
+enum SamplePriority {
+  URGENT
+  HIGH
+  NORMAL
+  LOW
 }

@@ -84,6 +84,7 @@ router.get("/samples/:id", vp(idSchema), surfaceSampleController.getSurfaceSampl
 router.post("/samples", validate(createSurfaceSampleSchema), surfaceSampleController.createSurfaceSample);
 router.patch("/samples/:id", vp(idSchema), validate(updateSurfaceSampleSchema), surfaceSampleController.updateSurfaceSample);
 router.delete("/samples/:id", vp(idSchema), surfaceSampleController.deleteSurfaceSample);
+router.post("/samples/:id/assign-voucher", vp(idSchema), surfaceSampleController.assignSurfaceSampleVoucher);
 
 // ─── SurfaceSampleResult ──────────────────────────────────────────────────────
 router.get("/results", vq(surfaceSampleResultQuerySchema), surfaceSampleController.getSurfaceSampleResults);

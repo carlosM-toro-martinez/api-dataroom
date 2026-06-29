@@ -296,6 +296,7 @@ export const surfaceSampleService = {
     if (query.surfaceAreaId) where.surfaceAreaId = query.surfaceAreaId;
     if (query.surfaceObjectiveId) where.surfaceObjectiveId = query.surfaceObjectiveId;
     if (query.createdById) where.createdById = query.createdById;
+    if (query.priority) where.priority = query.priority;
     if (query.search) where.code = { contains: query.search, mode: "insensitive" as const };
     const [data, total] = await Promise.all([
       prisma.surfaceSample.findMany({
@@ -370,6 +371,23 @@ export const surfaceSampleService = {
       await tx.surfaceSampleResult.deleteMany({ where: { surfaceSampleId: id } });
       await tx.surfaceLabAssignment.deleteMany({ where: { surfaceSampleId: id } });
       return tx.surfaceSample.delete({ where: { id } });
+    });
+  },
+
+  async assignSurfaceSampleVoucher(id: string, userId?: number) {
+    return prisma.$transaction(async (tx) => {
+      const sample = await tx.surfaceSample.findUnique({ where: { id } });
+      if (!sample) throw new HttpError("Surface sample not found", 404);
+      if (sample.voucherNumber !== null)
+        throw new HttpError(`Sample already has voucher number ${sample.voucherNumber}`, 409);
+      const agg = await tx.surfaceSample.aggregate({ _max: { voucherNumber: true } });
+      const nextNumber = (agg._max.voucherNumber ?? 0) + 1;
+      logger.info({ sampleId: id, voucherNumber: nextNumber, userId }, "SurfaceSample voucher assigned");
+      return tx.surfaceSample.update({
+        where: { id },
+        data: { voucherNumber: nextNumber, updatedById: userId } as any,
+        include: FULL_SAMPLE_INCLUDE,
+      });
     });
   },
 
