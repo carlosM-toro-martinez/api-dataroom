@@ -80,6 +80,8 @@ router.patch("/samples/:id/with-results", vp(idSchema), validate(updateSurfaceSa
 
 // ─── SurfaceSample (basic) ────────────────────────────────────────────────────
 router.get("/samples", vq(surfaceSampleQuerySchema), surfaceSampleController.getSurfaceSamples);
+router.get("/samples/exploration", vq(surfaceSampleQuerySchema), surfaceSampleController.getSurfaceExplorationSamples);
+router.get("/samples/production", vq(surfaceSampleQuerySchema), surfaceSampleController.getSurfaceProductionSamples);
 router.get("/samples/:id", vp(idSchema), surfaceSampleController.getSurfaceSampleById);
 router.post("/samples", validate(createSurfaceSampleSchema), surfaceSampleController.createSurfaceSample);
 router.patch("/samples/:id", vp(idSchema), validate(updateSurfaceSampleSchema), surfaceSampleController.updateSurfaceSample);

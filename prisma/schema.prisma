@@ -593,6 +593,7 @@ model InteriorSample {
   sequentialNumber    Int
   voucherNumber       Int?
   priority            SamplePriority          @default(NORMAL)
+  category            SampleCategory          @default(EXPLORATION)
   east                Float?
   north               Float?
   elevation           Float?
@@ -613,6 +614,7 @@ model InteriorSample {
   @@index([interiorLevelId])
   @@index([interiorObjectiveId])
   @@index([priority])
+  @@index([category])
   @@index([voucherNumber])
   @@index([east, north])
 }
@@ -706,6 +708,7 @@ model SurfaceSample {
   sequentialNumber   Int
   voucherNumber      Int?
   priority           SamplePriority         @default(NORMAL)
+  category           SampleCategory         @default(EXPLORATION)
   east               Float?
   north              Float?
   elevation          Float?
@@ -724,6 +727,7 @@ model SurfaceSample {
   @@index([surfaceAreaId])
   @@index([surfaceObjectiveId])
   @@index([priority])
+  @@index([category])
   @@index([voucherNumber])
   @@index([east, north])
 }
@@ -828,4 +832,9 @@ enum SamplePriority {
   HIGH
   NORMAL
   LOW
+}
+
+enum SampleCategory {
+  EXPLORATION
+  PRODUCTION
 }

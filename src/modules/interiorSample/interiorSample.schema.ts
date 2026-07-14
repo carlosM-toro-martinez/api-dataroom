@@ -7,6 +7,7 @@ const pagination = z.object({
 
 const LAB_SLOTS = ["L1", "L2", "L3"] as const;
 const SAMPLE_PRIORITIES = ["URGENT", "HIGH", "NORMAL", "LOW"] as const;
+const SAMPLE_CATEGORIES = ["EXPLORATION", "PRODUCTION"] as const;
 
 // ─── InteriorArea ─────────────────────────────────────────────────────────────
 export const interiorAreaQuerySchema = pagination.extend({
@@ -107,6 +108,7 @@ export const interiorSampleQuerySchema = pagination.extend({
   interiorObjectiveId: z.string().uuid().optional(),
   createdById: z.coerce.number().int().positive().optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   search: z.string().optional(),
 });
 
@@ -115,6 +117,7 @@ export const createInteriorSampleSchema = z.object({
   interiorObjectiveId: z.string().uuid(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
@@ -126,6 +129,7 @@ export const updateInteriorSampleSchema = z.object({
   interiorObjectiveId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
@@ -203,6 +207,7 @@ export const createInteriorSampleWithResultsSchema = z.object({
   interiorObjectiveId: z.string().uuid(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
@@ -215,6 +220,7 @@ export const updateInteriorSampleWithResultsSchema = z.object({
   interiorObjectiveId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),

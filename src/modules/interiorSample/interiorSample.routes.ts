@@ -93,6 +93,8 @@ router.patch("/samples/:id/with-results", vp(idSchema), validate(updateInteriorS
 
 // ─── InteriorSample (basic) ───────────────────────────────────────────────────
 router.get("/samples", vq(interiorSampleQuerySchema), interiorSampleController.getInteriorSamples);
+router.get("/samples/exploration", vq(interiorSampleQuerySchema), interiorSampleController.getInteriorExplorationSamples);
+router.get("/samples/production", vq(interiorSampleQuerySchema), interiorSampleController.getInteriorProductionSamples);
 router.get("/samples/:id", vp(idSchema), interiorSampleController.getInteriorSampleById);
 router.post("/samples", validate(createInteriorSampleSchema), interiorSampleController.createInteriorSample);
 router.patch("/samples/:id", vp(idSchema), validate(updateInteriorSampleSchema), interiorSampleController.updateInteriorSample);

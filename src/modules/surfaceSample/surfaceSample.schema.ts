@@ -6,6 +6,7 @@ const pagination = z.object({
 });
 
 const SAMPLE_PRIORITIES = ["URGENT", "HIGH", "NORMAL", "LOW"] as const;
+const SAMPLE_CATEGORIES = ["EXPLORATION", "PRODUCTION"] as const;
 
 // ─── SurfaceArea ──────────────────────────────────────────────────────────────
 export const surfaceAreaQuerySchema = pagination.extend({
@@ -77,6 +78,7 @@ export const surfaceSampleQuerySchema = pagination.extend({
   surfaceObjectiveId: z.string().uuid().optional(),
   createdById: z.coerce.number().int().positive().optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   search: z.string().optional(),
 });
 
@@ -85,6 +87,7 @@ export const createSurfaceSampleSchema = z.object({
   surfaceObjectiveId: z.string().uuid(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
@@ -96,6 +99,7 @@ export const updateSurfaceSampleSchema = z.object({
   surfaceObjectiveId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
@@ -154,6 +158,7 @@ export const createSurfaceSampleWithResultsSchema = z.object({
   surfaceObjectiveId: z.string().uuid(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
@@ -166,6 +171,7 @@ export const updateSurfaceSampleWithResultsSchema = z.object({
   surfaceObjectiveId: z.string().uuid().optional(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),

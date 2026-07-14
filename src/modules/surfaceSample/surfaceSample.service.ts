@@ -32,6 +32,16 @@ const pg = (q: any) => {
 
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
 
+const withVoucherCode = <T extends { voucherNumber: number | null; category: string }>(s: T) => ({
+  ...s,
+  voucherCode: s.voucherNumber !== null
+    ? `${String(s.voucherNumber).padStart(5, "0")} ${s.category === "EXPLORATION" ? "E" : "P"}/S`
+    : null,
+});
+
+const mapSample = (s: any) => (s ? withVoucherCode(s) : s);
+const mapSamples = (arr: any[]) => arr.map(mapSample);
+
 const FULL_SAMPLE_INCLUDE = {
   area: { select: { id: true, name: true, abbreviation: true } },
   objective: { select: { id: true, name: true } },
@@ -297,8 +307,9 @@ export const surfaceSampleService = {
     if (query.surfaceObjectiveId) where.surfaceObjectiveId = query.surfaceObjectiveId;
     if (query.createdById) where.createdById = query.createdById;
     if (query.priority) where.priority = query.priority;
+    if (query.category) where.category = query.category;
     if (query.search) where.code = { contains: query.search, mode: "insensitive" as const };
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       prisma.surfaceSample.findMany({
         where,
         skip,
@@ -308,7 +319,15 @@ export const surfaceSampleService = {
       }),
       prisma.surfaceSample.count({ where }),
     ]);
-    return { data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+    return { data: mapSamples(rows), meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+  },
+
+  async getSurfaceExplorationSamples(query: SurfaceSampleQuery) {
+    return this.getSurfaceSamples({ ...query, category: "EXPLORATION" as const });
+  },
+
+  async getSurfaceProductionSamples(query: SurfaceSampleQuery) {
+    return this.getSurfaceSamples({ ...query, category: "PRODUCTION" as const });
   },
 
   async getSurfaceSampleById(id: string) {
@@ -317,7 +336,7 @@ export const surfaceSampleService = {
       include: FULL_SAMPLE_INCLUDE,
     });
     if (!sample) throw new HttpError("Surface sample not found", 404);
-    return sample;
+    return mapSample(sample);
   },
 
   async createSurfaceSample(data: CreateSurfaceSampleDTO, userId?: number) {
@@ -342,7 +361,7 @@ export const surfaceSampleService = {
         } as any,
       });
       logger.info({ sampleId: sample.id, code, userId }, "SurfaceSample created");
-      return tx.surfaceSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE });
+      return mapSample(await tx.surfaceSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE }));
     });
   },
 
@@ -362,7 +381,7 @@ export const surfaceSampleService = {
       include: FULL_SAMPLE_INCLUDE,
     });
     logger.info({ sampleId: id, userId }, "SurfaceSample updated");
-    return updated;
+    return mapSample(updated);
   },
 
   async deleteSurfaceSample(id: string) {
@@ -378,16 +397,22 @@ export const surfaceSampleService = {
     return prisma.$transaction(async (tx) => {
       const sample = await tx.surfaceSample.findUnique({ where: { id } });
       if (!sample) throw new HttpError("Surface sample not found", 404);
-      if (sample.voucherNumber !== null)
-        throw new HttpError(`Sample already has voucher number ${sample.voucherNumber}`, 409);
-      const agg = await tx.surfaceSample.aggregate({ _max: { voucherNumber: true } });
+      if (sample.voucherNumber !== null) {
+        const code = withVoucherCode(sample).voucherCode;
+        throw new HttpError(`Sample already has voucher ${code}`, 409);
+      }
+      // Secuencia independiente por categoría
+      const agg = await tx.surfaceSample.aggregate({
+        where: { category: sample.category },
+        _max: { voucherNumber: true },
+      });
       const nextNumber = (agg._max.voucherNumber ?? 0) + 1;
-      logger.info({ sampleId: id, voucherNumber: nextNumber, userId }, "SurfaceSample voucher assigned");
-      return tx.surfaceSample.update({
+      logger.info({ sampleId: id, voucherNumber: nextNumber, category: sample.category, userId }, "SurfaceSample voucher assigned");
+      return mapSample(await tx.surfaceSample.update({
         where: { id },
         data: { voucherNumber: nextNumber, updatedById: userId } as any,
         include: FULL_SAMPLE_INCLUDE,
-      });
+      }));
     });
   },
 
@@ -472,7 +497,7 @@ export const surfaceSampleService = {
         "SurfaceSample with results created",
       );
 
-      return tx.surfaceSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE });
+      return mapSample(await tx.surfaceSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE }));
     });
   },
 
@@ -551,7 +576,7 @@ export const surfaceSampleService = {
       }
 
       logger.info({ sampleId: id, userId }, "SurfaceSample with results updated");
-      return tx.surfaceSample.findUnique({ where: { id }, include: FULL_SAMPLE_INCLUDE });
+      return mapSample(await tx.surfaceSample.findUnique({ where: { id }, include: FULL_SAMPLE_INCLUDE }));
     });
   },
 

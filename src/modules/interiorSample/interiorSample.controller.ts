@@ -132,6 +132,14 @@ export const interiorSampleController = {
     try { ok(res, await interiorSampleService.getInteriorSamples(vq(req))); }
     catch (e) { fail(res, e); }
   },
+  async getInteriorExplorationSamples(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.getInteriorExplorationSamples(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async getInteriorProductionSamples(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.getInteriorProductionSamples(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
   async getInteriorSampleById(req: AuthRequest, res: Response) {
     try { ok(res, await interiorSampleService.getInteriorSampleById(vp(req).id)); }
     catch (e) { fail(res, e); }

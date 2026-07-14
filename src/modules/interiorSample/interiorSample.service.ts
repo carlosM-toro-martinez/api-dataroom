@@ -38,6 +38,16 @@ const pg = (q: any) => {
 
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
 
+const withVoucherCode = <T extends { voucherNumber: number | null; category: string }>(s: T) => ({
+  ...s,
+  voucherCode: s.voucherNumber !== null
+    ? `${String(s.voucherNumber).padStart(5, "0")} ${s.category === "EXPLORATION" ? "E" : "P"}/I`
+    : null,
+});
+
+const mapSample = (s: any) => (s ? withVoucherCode(s) : s);
+const mapSamples = (arr: any[]) => arr.map(mapSample);
+
 // Resultados anidados dentro de cada asignación de laboratorio
 const FULL_SAMPLE_INCLUDE = {
   labor: {
@@ -385,8 +395,9 @@ export const interiorSampleService = {
     if (query.interiorObjectiveId) where.interiorObjectiveId = query.interiorObjectiveId;
     if (query.createdById) where.createdById = query.createdById;
     if (query.priority) where.priority = query.priority;
+    if (query.category) where.category = query.category;
     if (query.search) where.code = { contains: query.search, mode: "insensitive" as const };
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       prisma.interiorSample.findMany({
         where,
         skip,
@@ -396,7 +407,15 @@ export const interiorSampleService = {
       }),
       prisma.interiorSample.count({ where }),
     ]);
-    return { data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+    return { data: mapSamples(rows), meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+  },
+
+  async getInteriorExplorationSamples(query: InteriorSampleQuery) {
+    return this.getInteriorSamples({ ...query, category: "EXPLORATION" as const });
+  },
+
+  async getInteriorProductionSamples(query: InteriorSampleQuery) {
+    return this.getInteriorSamples({ ...query, category: "PRODUCTION" as const });
   },
 
   async getInteriorSampleById(id: string) {
@@ -405,7 +424,7 @@ export const interiorSampleService = {
       include: FULL_SAMPLE_INCLUDE,
     });
     if (!sample) throw new HttpError("Interior sample not found", 404);
-    return sample;
+    return mapSample(sample);
   },
 
   async createInteriorSample(data: CreateInteriorSampleDTO, userId?: number) {
@@ -433,7 +452,7 @@ export const interiorSampleService = {
         } as any,
       });
       logger.info({ sampleId: sample.id, code, userId }, "InteriorSample created");
-      return tx.interiorSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE });
+      return mapSample(await tx.interiorSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE }));
     });
   },
 
@@ -453,7 +472,7 @@ export const interiorSampleService = {
       include: FULL_SAMPLE_INCLUDE,
     });
     logger.info({ sampleId: id, userId }, "InteriorSample updated");
-    return updated;
+    return mapSample(updated);
   },
 
   async deleteInteriorSample(id: string) {
@@ -469,16 +488,22 @@ export const interiorSampleService = {
     return prisma.$transaction(async (tx) => {
       const sample = await tx.interiorSample.findUnique({ where: { id } });
       if (!sample) throw new HttpError("Interior sample not found", 404);
-      if (sample.voucherNumber !== null)
-        throw new HttpError(`Sample already has voucher number ${sample.voucherNumber}`, 409);
-      const agg = await tx.interiorSample.aggregate({ _max: { voucherNumber: true } });
+      if (sample.voucherNumber !== null) {
+        const code = withVoucherCode(sample).voucherCode;
+        throw new HttpError(`Sample already has voucher ${code}`, 409);
+      }
+      // Secuencia independiente por categoría
+      const agg = await tx.interiorSample.aggregate({
+        where: { category: sample.category },
+        _max: { voucherNumber: true },
+      });
       const nextNumber = (agg._max.voucherNumber ?? 0) + 1;
-      logger.info({ sampleId: id, voucherNumber: nextNumber, userId }, "InteriorSample voucher assigned");
-      return tx.interiorSample.update({
+      logger.info({ sampleId: id, voucherNumber: nextNumber, category: sample.category, userId }, "InteriorSample voucher assigned");
+      return mapSample(await tx.interiorSample.update({
         where: { id },
         data: { voucherNumber: nextNumber, updatedById: userId } as any,
         include: FULL_SAMPLE_INCLUDE,
-      });
+      }));
     });
   },
 
@@ -567,7 +592,7 @@ export const interiorSampleService = {
         "InteriorSample with results created",
       );
 
-      return tx.interiorSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE });
+      return mapSample(await tx.interiorSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE }));
     });
   },
 
@@ -648,7 +673,7 @@ export const interiorSampleService = {
       }
 
       logger.info({ sampleId: id, userId }, "InteriorSample with results updated");
-      return tx.interiorSample.findUnique({ where: { id }, include: FULL_SAMPLE_INCLUDE });
+      return mapSample(await tx.interiorSample.findUnique({ where: { id }, include: FULL_SAMPLE_INCLUDE }));
     });
   },
 

@@ -110,6 +110,14 @@ export const surfaceSampleController = {
     try { ok(res, await surfaceSampleService.getSurfaceSamples(vq(req))); }
     catch (e) { fail(res, e); }
   },
+  async getSurfaceExplorationSamples(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceExplorationSamples(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async getSurfaceProductionSamples(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceProductionSamples(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
   async getSurfaceSampleById(req: AuthRequest, res: Response) {
     try { ok(res, await surfaceSampleService.getSurfaceSampleById(vp(req).id)); }
     catch (e) { fail(res, e); }
