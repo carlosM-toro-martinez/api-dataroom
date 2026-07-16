@@ -3,6 +3,7 @@ import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
 import type {
   CreateSurfaceAreaDTO,
+  CreateSurfaceDispatchDTO,
   CreateSurfaceLabAssignmentDTO,
   CreateSurfaceLaboratoryDTO,
   CreateSurfaceObjectiveDTO,
@@ -10,12 +11,14 @@ import type {
   CreateSurfaceSampleResultDTO,
   CreateSurfaceSampleWithResultsDTO,
   SurfaceAreaQuery,
+  SurfaceDispatchQuery,
   SurfaceLabAssignmentQuery,
   SurfaceLaboratoryQuery,
   SurfaceObjectiveQuery,
   SurfaceSampleQuery,
   SurfaceSampleResultQuery,
   UpdateSurfaceAreaDTO,
+  UpdateSurfaceDispatchDTO,
   UpdateSurfaceLabAssignmentDTO,
   UpdateSurfaceLaboratoryDTO,
   UpdateSurfaceObjectiveDTO,
@@ -32,16 +35,6 @@ const pg = (q: any) => {
 
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
 
-const withVoucherCode = <T extends { voucherNumber: number | null; category: string }>(s: T) => ({
-  ...s,
-  voucherCode: s.voucherNumber !== null
-    ? `${String(s.voucherNumber).padStart(5, "0")} ${s.category === "EXPLORATION" ? "E" : "P"}/S`
-    : null,
-});
-
-const mapSample = (s: any) => (s ? withVoucherCode(s) : s);
-const mapSamples = (arr: any[]) => arr.map(mapSample);
-
 const FULL_SAMPLE_INCLUDE = {
   area: { select: { id: true, name: true, abbreviation: true } },
   objective: { select: { id: true, name: true } },
@@ -57,6 +50,52 @@ const FULL_SAMPLE_INCLUDE = {
     orderBy: { createdAt: "asc" as const },
   },
 } as const;
+
+const DISPATCH_INCLUDE = {
+  laboratory: { select: { id: true, name: true, abbreviation: true } },
+  createdBy: { select: { id: true, nombre: true } },
+  items: {
+    include: {
+      sample: { select: { id: true, code: true, name: true, status: true, category: true } },
+      requestedElements: {
+        include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
+      },
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
+} as const;
+
+async function handleSurfaceSampleDelivered(sampleId: string, tx: any) {
+  await tx.surfaceSample.update({
+    where: { id: sampleId },
+    data: { status: "COMPLETED" },
+  });
+
+  const items = await tx.surfaceDispatchItem.findMany({
+    where: { surfaceSampleId: sampleId, status: "PENDING" },
+    select: { id: true, dispatchId: true },
+  });
+
+  if (items.length === 0) return;
+
+  await tx.surfaceDispatchItem.updateMany({
+    where: { surfaceSampleId: sampleId, status: "PENDING" },
+    data: { status: "COMPLETED" },
+  });
+
+  const dispatchIds = [...new Set(items.map((i: any) => i.dispatchId))];
+  for (const dispatchId of dispatchIds) {
+    const pendingCount = await tx.surfaceDispatchItem.count({
+      where: { dispatchId, status: "PENDING" },
+    });
+    if (pendingCount === 0) {
+      await tx.surfaceSampleDispatch.update({
+        where: { id: dispatchId },
+        data: { status: "COMPLETED" },
+      });
+    }
+  }
+}
 
 export const surfaceSampleService = {
 
@@ -308,6 +347,7 @@ export const surfaceSampleService = {
     if (query.createdById) where.createdById = query.createdById;
     if (query.priority) where.priority = query.priority;
     if (query.category) where.category = query.category;
+    if (query.status) where.status = query.status;
     if (query.search) where.code = { contains: query.search, mode: "insensitive" as const };
     const [rows, total] = await Promise.all([
       prisma.surfaceSample.findMany({
@@ -319,7 +359,7 @@ export const surfaceSampleService = {
       }),
       prisma.surfaceSample.count({ where }),
     ]);
-    return { data: mapSamples(rows), meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+    return { data: rows, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
   },
 
   async getSurfaceExplorationSamples(query: SurfaceSampleQuery) {
@@ -336,7 +376,7 @@ export const surfaceSampleService = {
       include: FULL_SAMPLE_INCLUDE,
     });
     if (!sample) throw new HttpError("Surface sample not found", 404);
-    return mapSample(sample);
+    return sample;
   },
 
   async createSurfaceSample(data: CreateSurfaceSampleDTO, userId?: number) {
@@ -346,10 +386,11 @@ export const surfaceSampleService = {
     if (!objective) throw new HttpError("Surface objective not found", 404);
 
     return prisma.$transaction(async (tx) => {
-      const count = await tx.surfaceSample.count({ where: { surfaceAreaId: data.surfaceAreaId } });
-      const codeStart = parseInt(process.env.SURFACE_SAMPLE_CODE_START ?? "1");
-      const sequentialNumber = count + codeStart;
-      const code = `${area.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
+      const category = data.category ?? "EXPLORATION";
+      const prefix = category === "PRODUCTION" ? "M" : "EX";
+      const count = await tx.surfaceSample.count({ where: { category } });
+      const sequentialNumber = count + 1;
+      const code = `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
       const sample = await tx.surfaceSample.create({
         data: {
           ...data,
@@ -361,7 +402,7 @@ export const surfaceSampleService = {
         } as any,
       });
       logger.info({ sampleId: sample.id, code, userId }, "SurfaceSample created");
-      return mapSample(await tx.surfaceSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE }));
+      return tx.surfaceSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE });
     });
   },
 
@@ -381,7 +422,7 @@ export const surfaceSampleService = {
       include: FULL_SAMPLE_INCLUDE,
     });
     logger.info({ sampleId: id, userId }, "SurfaceSample updated");
-    return mapSample(updated);
+    return updated;
   },
 
   async deleteSurfaceSample(id: string) {
@@ -390,29 +431,6 @@ export const surfaceSampleService = {
       await tx.surfaceSampleResult.deleteMany({ where: { surfaceSampleId: id } });
       await tx.surfaceLabAssignment.deleteMany({ where: { surfaceSampleId: id } });
       return tx.surfaceSample.delete({ where: { id } });
-    });
-  },
-
-  async assignSurfaceSampleVoucher(id: string, userId?: number) {
-    return prisma.$transaction(async (tx) => {
-      const sample = await tx.surfaceSample.findUnique({ where: { id } });
-      if (!sample) throw new HttpError("Surface sample not found", 404);
-      if (sample.voucherNumber !== null) {
-        const code = withVoucherCode(sample).voucherCode;
-        throw new HttpError(`Sample already has voucher ${code}`, 409);
-      }
-      // Secuencia independiente por categoría
-      const agg = await tx.surfaceSample.aggregate({
-        where: { category: sample.category },
-        _max: { voucherNumber: true },
-      });
-      const nextNumber = (agg._max.voucherNumber ?? 0) + 1;
-      logger.info({ sampleId: id, voucherNumber: nextNumber, category: sample.category, userId }, "SurfaceSample voucher assigned");
-      return mapSample(await tx.surfaceSample.update({
-        where: { id },
-        data: { voucherNumber: nextNumber, updatedById: userId } as any,
-        include: FULL_SAMPLE_INCLUDE,
-      }));
     });
   },
 
@@ -440,10 +458,11 @@ export const surfaceSampleService = {
     const { labAssignments: labAssignmentsData, ...sampleFields } = data;
 
     return prisma.$transaction(async (tx) => {
-      const count = await tx.surfaceSample.count({ where: { surfaceAreaId: data.surfaceAreaId } });
-      const codeStart = parseInt(process.env.SURFACE_SAMPLE_CODE_START ?? "1");
-      const sequentialNumber = count + codeStart;
-      const code = `${area.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
+      const category = sampleFields.category ?? "EXPLORATION";
+      const prefix = category === "PRODUCTION" ? "M" : "EX";
+      const count = await tx.surfaceSample.count({ where: { category } });
+      const sequentialNumber = count + 1;
+      const code = `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
 
       const sample = await tx.surfaceSample.create({
         data: {
@@ -497,7 +516,7 @@ export const surfaceSampleService = {
         "SurfaceSample with results created",
       );
 
-      return mapSample(await tx.surfaceSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE }));
+      return tx.surfaceSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE });
     });
   },
 
@@ -576,7 +595,7 @@ export const surfaceSampleService = {
       }
 
       logger.info({ sampleId: id, userId }, "SurfaceSample with results updated");
-      return mapSample(await tx.surfaceSample.findUnique({ where: { id }, include: FULL_SAMPLE_INCLUDE }));
+      return tx.surfaceSample.findUnique({ where: { id }, include: FULL_SAMPLE_INCLUDE });
     });
   },
 
@@ -631,16 +650,20 @@ export const surfaceSampleService = {
       where: { surfaceLabAssignmentId_elementId: { surfaceLabAssignmentId: data.surfaceLabAssignmentId, elementId: data.elementId } },
     });
     if (clash) throw new HttpError("Result for this element already exists in this lab assignment", 409);
-    const result = await prisma.surfaceSampleResult.create({
-      data: {
-        ...data,
-        surfaceSampleId: assignment.surfaceSampleId,
-        createdById: userId,
-        updatedById: userId,
-      } as any,
+
+    return prisma.$transaction(async (tx) => {
+      const result = await tx.surfaceSampleResult.create({
+        data: {
+          ...data,
+          surfaceSampleId: assignment.surfaceSampleId,
+          createdById: userId,
+          updatedById: userId,
+        } as any,
+      });
+      await handleSurfaceSampleDelivered(assignment.surfaceSampleId, tx);
+      logger.info({ resultId: result.id, sampleId: assignment.surfaceSampleId, userId }, "SurfaceSampleResult created");
+      return result;
     });
-    logger.info({ resultId: result.id, userId }, "SurfaceSampleResult created");
-    return result;
   },
 
   async updateSurfaceSampleResult(id: string, data: UpdateSurfaceSampleResultDTO, userId?: number) {
@@ -665,5 +688,142 @@ export const surfaceSampleService = {
   async deleteSurfaceSampleResult(id: string) {
     await this.getSurfaceSampleResultById(id);
     return prisma.surfaceSampleResult.delete({ where: { id } });
+  },
+
+  // ─── SurfaceDispatch (Nota de Remisión) ───────────────────────────────────
+  async getSurfaceDispatches(query: SurfaceDispatchQuery) {
+    const { p, l, skip } = pg(query);
+    const where: any = {};
+    if (query.surfaceLaboratoryId) where.surfaceLaboratoryId = query.surfaceLaboratoryId;
+    if (query.status) where.status = query.status;
+    const [data, total] = await Promise.all([
+      prisma.surfaceSampleDispatch.findMany({
+        where,
+        skip,
+        take: l,
+        orderBy: { sentAt: "desc" },
+        include: DISPATCH_INCLUDE,
+      }),
+      prisma.surfaceSampleDispatch.count({ where }),
+    ]);
+    return { data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+  },
+
+  async getSurfaceDispatchById(id: string) {
+    const dispatch = await prisma.surfaceSampleDispatch.findUnique({
+      where: { id },
+      include: DISPATCH_INCLUDE,
+    });
+    if (!dispatch) throw new HttpError("Surface dispatch not found", 404);
+    return dispatch;
+  },
+
+  async createSurfaceDispatch(data: CreateSurfaceDispatchDTO, userId?: number) {
+    const lab = await prisma.surfaceLaboratory.findUnique({ where: { id: data.surfaceLaboratoryId } });
+    if (!lab) throw new HttpError("Surface laboratory not found", 404);
+
+    const sampleIds = data.items.map((i) => i.surfaceSampleId);
+    const samples = await prisma.surfaceSample.findMany({ where: { id: { in: sampleIds } } });
+    if (samples.length !== sampleIds.length)
+      throw new HttpError("One or more samples not found", 404);
+
+    const allElementIds = [...new Set(data.items.flatMap((i) => i.elementIds))];
+    const elements = await prisma.element.findMany({ where: { id: { in: allElementIds } } });
+    if (elements.length !== allElementIds.length)
+      throw new HttpError("One or more elements not found", 404);
+
+    return prisma.$transaction(async (tx) => {
+      const dispatch = await tx.surfaceSampleDispatch.create({
+        data: {
+          surfaceLaboratoryId: data.surfaceLaboratoryId,
+          projectName: data.projectName,
+          sentAt: new Date(data.sentAt),
+          notes: data.notes,
+          createdById: userId,
+          updatedById: userId,
+        } as any,
+      });
+
+      for (const itemData of data.items) {
+        const item = await tx.surfaceDispatchItem.create({
+          data: {
+            dispatchId: dispatch.id,
+            surfaceSampleId: itemData.surfaceSampleId,
+            notes: itemData.notes,
+            createdById: userId,
+            updatedById: userId,
+          } as any,
+        });
+
+        for (const elementId of itemData.elementIds) {
+          await tx.surfaceDispatchElement.create({
+            data: { dispatchItemId: item.id, elementId } as any,
+          });
+        }
+
+        await tx.surfaceSample.update({
+          where: { id: itemData.surfaceSampleId },
+          data: { status: "DISPATCHED", updatedById: userId } as any,
+        });
+      }
+
+      logger.info({ dispatchId: dispatch.id, sampleCount: data.items.length, userId }, "SurfaceDispatch created");
+
+      return tx.surfaceSampleDispatch.findUnique({ where: { id: dispatch.id }, include: DISPATCH_INCLUDE });
+    });
+  },
+
+  async updateSurfaceDispatch(id: string, data: UpdateSurfaceDispatchDTO, userId?: number) {
+    await this.getSurfaceDispatchById(id);
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.surfaceSampleDispatch.update({
+        where: { id },
+        data: {
+          ...data,
+          sentAt: data.sentAt ? new Date(data.sentAt) : undefined,
+          updatedById: userId,
+        } as any,
+        include: DISPATCH_INCLUDE,
+      });
+
+      if (data.status === "COMPLETED") {
+        const sampleIds = updated.items.map((i: any) => i.surfaceSampleId);
+        if (sampleIds.length > 0) {
+          await tx.surfaceDispatchItem.updateMany({
+            where: { dispatchId: id, status: "PENDING" },
+            data: { status: "COMPLETED" },
+          });
+          await tx.surfaceSample.updateMany({
+            where: { id: { in: sampleIds } },
+            data: { status: "COMPLETED" },
+          });
+        }
+      }
+
+      logger.info({ dispatchId: id, userId }, "SurfaceDispatch updated");
+      return tx.surfaceSampleDispatch.findUnique({ where: { id }, include: DISPATCH_INCLUDE });
+    });
+  },
+
+  async deleteSurfaceDispatch(id: string) {
+    const dispatch = await this.getSurfaceDispatchById(id);
+    if (dispatch.status === "COMPLETED")
+      throw new HttpError("Cannot delete a completed dispatch", 409);
+
+    return prisma.$transaction(async (tx) => {
+      const sampleIds = dispatch.items.map((i: any) => i.surfaceSampleId);
+      for (const sampleId of sampleIds) {
+        const sample = await tx.surfaceSample.findUnique({ where: { id: sampleId }, select: { status: true } });
+        if (sample?.status === "COMPLETED") continue;
+        const otherDispatch = await tx.surfaceDispatchItem.findFirst({
+          where: { surfaceSampleId: sampleId, dispatchId: { not: id } },
+        });
+        await tx.surfaceSample.update({
+          where: { id: sampleId },
+          data: { status: otherDispatch ? "DISPATCHED" : "REGISTERED" },
+        });
+      }
+      return tx.surfaceSampleDispatch.delete({ where: { id } });
+    });
   },
 };

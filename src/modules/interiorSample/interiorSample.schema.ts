@@ -8,6 +8,8 @@ const pagination = z.object({
 const LAB_SLOTS = ["L1", "L2", "L3"] as const;
 const SAMPLE_PRIORITIES = ["URGENT", "HIGH", "NORMAL", "LOW"] as const;
 const SAMPLE_CATEGORIES = ["EXPLORATION", "PRODUCTION"] as const;
+const SAMPLE_STATUSES = ["REGISTERED", "DISPATCHED", "COMPLETED"] as const;
+const DISPATCH_STATUSES = ["PENDING", "COMPLETED"] as const;
 
 // ─── InteriorArea ─────────────────────────────────────────────────────────────
 export const interiorAreaQuerySchema = pagination.extend({
@@ -109,6 +111,7 @@ export const interiorSampleQuerySchema = pagination.extend({
   createdById: z.coerce.number().int().positive().optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
   category: z.enum(SAMPLE_CATEGORIES).optional(),
+  status: z.enum(SAMPLE_STATUSES).optional(),
   search: z.string().optional(),
 });
 
@@ -118,7 +121,6 @@ export const createInteriorSampleSchema = z.object({
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
   category: z.enum(SAMPLE_CATEGORIES).optional(),
-  voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -130,7 +132,7 @@ export const updateInteriorSampleSchema = z.object({
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
   category: z.enum(SAMPLE_CATEGORIES).optional(),
-  voucherNumber: z.number().int().positive().optional(),
+  status: z.enum(SAMPLE_STATUSES).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -208,7 +210,6 @@ export const createInteriorSampleWithResultsSchema = z.object({
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
   category: z.enum(SAMPLE_CATEGORIES).optional(),
-  voucherNumber: z.number().int().positive().optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
@@ -221,12 +222,39 @@ export const updateInteriorSampleWithResultsSchema = z.object({
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
   category: z.enum(SAMPLE_CATEGORIES).optional(),
-  voucherNumber: z.number().int().positive().optional(),
+  status: z.enum(SAMPLE_STATUSES).optional(),
   east: z.number().optional(),
   north: z.number().optional(),
   elevation: z.number().optional(),
   sampledAt: z.string().datetime().optional(),
   labAssignments: z.array(labAssignmentEntrySchema).optional(),
+}).strict();
+
+// ─── InteriorDispatch (Nota de Remisión) ─────────────────────────────────────
+export const interiorDispatchQuerySchema = pagination.extend({
+  interiorLaboratoryId: z.string().uuid().optional(),
+  status: z.enum(DISPATCH_STATUSES).optional(),
+});
+
+const dispatchItemSchema = z.object({
+  interiorSampleId: z.string().uuid(),
+  elementIds: z.array(z.string().uuid()).min(1, "At least one element required"),
+  notes: z.string().optional(),
+}).strict();
+
+export const createInteriorDispatchSchema = z.object({
+  interiorLaboratoryId: z.string().uuid(),
+  projectName: z.string().optional(),
+  sentAt: z.string().datetime(),
+  notes: z.string().optional(),
+  items: z.array(dispatchItemSchema).min(1, "At least one sample required"),
+}).strict();
+
+export const updateInteriorDispatchSchema = z.object({
+  projectName: z.string().optional(),
+  sentAt: z.string().datetime().optional(),
+  notes: z.string().optional(),
+  status: z.enum(DISPATCH_STATUSES).optional(),
 }).strict();
 
 export const idSchema = z.object({ id: z.string().uuid() });

@@ -4,6 +4,7 @@ import { authenticate } from "../../middleware/auth.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import {
   createSurfaceAreaSchema,
+  createSurfaceDispatchSchema,
   createSurfaceLabAssignmentSchema,
   createSurfaceLaboratorySchema,
   createSurfaceObjectiveSchema,
@@ -12,12 +13,14 @@ import {
   createSurfaceSampleWithResultsSchema,
   idSchema,
   surfaceAreaQuerySchema,
+  surfaceDispatchQuerySchema,
   surfaceLabAssignmentQuerySchema,
   surfaceLaboratoryQuerySchema,
   surfaceObjectiveQuerySchema,
   surfaceSampleQuerySchema,
   surfaceSampleResultQuerySchema,
   updateSurfaceAreaSchema,
+  updateSurfaceDispatchSchema,
   updateSurfaceLabAssignmentSchema,
   updateSurfaceLaboratorySchema,
   updateSurfaceObjectiveSchema,
@@ -86,7 +89,6 @@ router.get("/samples/:id", vp(idSchema), surfaceSampleController.getSurfaceSampl
 router.post("/samples", validate(createSurfaceSampleSchema), surfaceSampleController.createSurfaceSample);
 router.patch("/samples/:id", vp(idSchema), validate(updateSurfaceSampleSchema), surfaceSampleController.updateSurfaceSample);
 router.delete("/samples/:id", vp(idSchema), surfaceSampleController.deleteSurfaceSample);
-router.post("/samples/:id/assign-voucher", vp(idSchema), surfaceSampleController.assignSurfaceSampleVoucher);
 
 // ─── SurfaceSampleResult ──────────────────────────────────────────────────────
 router.get("/results", vq(surfaceSampleResultQuerySchema), surfaceSampleController.getSurfaceSampleResults);
@@ -94,5 +96,12 @@ router.get("/results/:id", vp(idSchema), surfaceSampleController.getSurfaceSampl
 router.post("/results", validate(createSurfaceSampleResultSchema), surfaceSampleController.createSurfaceSampleResult);
 router.patch("/results/:id", vp(idSchema), validate(updateSurfaceSampleResultSchema), surfaceSampleController.updateSurfaceSampleResult);
 router.delete("/results/:id", vp(idSchema), surfaceSampleController.deleteSurfaceSampleResult);
+
+// ─── SurfaceDispatch (Nota de Remisión) ──────────────────────────────────────
+router.get("/dispatches", vq(surfaceDispatchQuerySchema), surfaceSampleController.getSurfaceDispatches);
+router.get("/dispatches/:id", vp(idSchema), surfaceSampleController.getSurfaceDispatchById);
+router.post("/dispatches", validate(createSurfaceDispatchSchema), surfaceSampleController.createSurfaceDispatch);
+router.patch("/dispatches/:id", vp(idSchema), validate(updateSurfaceDispatchSchema), surfaceSampleController.updateSurfaceDispatch);
+router.delete("/dispatches/:id", vp(idSchema), surfaceSampleController.deleteSurfaceDispatch);
 
 export default router;

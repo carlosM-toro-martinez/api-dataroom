@@ -3,6 +3,7 @@ import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
 import type {
   CreateInteriorAreaDTO,
+  CreateInteriorDispatchDTO,
   CreateInteriorLabAssignmentDTO,
   CreateInteriorLaborDTO,
   CreateInteriorLaboratoryDTO,
@@ -12,6 +13,7 @@ import type {
   CreateInteriorSampleResultDTO,
   CreateInteriorSampleWithResultsDTO,
   InteriorAreaQuery,
+  InteriorDispatchQuery,
   InteriorLabAssignmentQuery,
   InteriorLaborQuery,
   InteriorLaboratoryQuery,
@@ -20,6 +22,7 @@ import type {
   InteriorSampleQuery,
   InteriorSampleResultQuery,
   UpdateInteriorAreaDTO,
+  UpdateInteriorDispatchDTO,
   UpdateInteriorLabAssignmentDTO,
   UpdateInteriorLaborDTO,
   UpdateInteriorLaboratoryDTO,
@@ -38,17 +41,6 @@ const pg = (q: any) => {
 
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
 
-const withVoucherCode = <T extends { voucherNumber: number | null; category: string }>(s: T) => ({
-  ...s,
-  voucherCode: s.voucherNumber !== null
-    ? `${String(s.voucherNumber).padStart(5, "0")} ${s.category === "EXPLORATION" ? "E" : "P"}/I`
-    : null,
-});
-
-const mapSample = (s: any) => (s ? withVoucherCode(s) : s);
-const mapSamples = (arr: any[]) => arr.map(mapSample);
-
-// Resultados anidados dentro de cada asignación de laboratorio
 const FULL_SAMPLE_INCLUDE = {
   labor: {
     include: {
@@ -68,6 +60,53 @@ const FULL_SAMPLE_INCLUDE = {
     orderBy: { slot: "asc" as const },
   },
 } as const;
+
+const DISPATCH_INCLUDE = {
+  laboratory: { select: { id: true, name: true, abbreviation: true } },
+  createdBy: { select: { id: true, nombre: true } },
+  items: {
+    include: {
+      sample: { select: { id: true, code: true, name: true, status: true, category: true } },
+      requestedElements: {
+        include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
+      },
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
+} as const;
+
+// When results are registered for a sample, mark it COMPLETED and propagate to dispatch items/lotes
+async function handleInteriorSampleDelivered(sampleId: string, tx: any) {
+  await tx.interiorSample.update({
+    where: { id: sampleId },
+    data: { status: "COMPLETED" },
+  });
+
+  const items = await tx.interiorDispatchItem.findMany({
+    where: { interiorSampleId: sampleId, status: "PENDING" },
+    select: { id: true, dispatchId: true },
+  });
+
+  if (items.length === 0) return;
+
+  await tx.interiorDispatchItem.updateMany({
+    where: { interiorSampleId: sampleId, status: "PENDING" },
+    data: { status: "COMPLETED" },
+  });
+
+  const dispatchIds = [...new Set(items.map((i: any) => i.dispatchId))];
+  for (const dispatchId of dispatchIds) {
+    const pendingCount = await tx.interiorDispatchItem.count({
+      where: { dispatchId, status: "PENDING" },
+    });
+    if (pendingCount === 0) {
+      await tx.interiorSampleDispatch.update({
+        where: { id: dispatchId },
+        data: { status: "COMPLETED" },
+      });
+    }
+  }
+}
 
 export const interiorSampleService = {
 
@@ -396,6 +435,7 @@ export const interiorSampleService = {
     if (query.createdById) where.createdById = query.createdById;
     if (query.priority) where.priority = query.priority;
     if (query.category) where.category = query.category;
+    if (query.status) where.status = query.status;
     if (query.search) where.code = { contains: query.search, mode: "insensitive" as const };
     const [rows, total] = await Promise.all([
       prisma.interiorSample.findMany({
@@ -407,7 +447,7 @@ export const interiorSampleService = {
       }),
       prisma.interiorSample.count({ where }),
     ]);
-    return { data: mapSamples(rows), meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+    return { data: rows, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
   },
 
   async getInteriorExplorationSamples(query: InteriorSampleQuery) {
@@ -424,7 +464,7 @@ export const interiorSampleService = {
       include: FULL_SAMPLE_INCLUDE,
     });
     if (!sample) throw new HttpError("Interior sample not found", 404);
-    return mapSample(sample);
+    return sample;
   },
 
   async createInteriorSample(data: CreateInteriorSampleDTO, userId?: number) {
@@ -437,9 +477,11 @@ export const interiorSampleService = {
     if (!objective) throw new HttpError("Interior objective not found", 404);
 
     return prisma.$transaction(async (tx) => {
-      const count = await tx.interiorSample.count({ where: { interiorLevelId: labor.level.id } });
-      const sequentialNumber = count + labor.level.codeStart;
-      const code = `${labor.level.area.abbreviation}/${labor.level.abbreviation}/${labor.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
+      const category = data.category ?? "EXPLORATION";
+      const prefix = category === "PRODUCTION" ? "M" : "EX";
+      const count = await tx.interiorSample.count({ where: { category } });
+      const sequentialNumber = count + 1;
+      const code = `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
       const sample = await tx.interiorSample.create({
         data: {
           ...data,
@@ -452,7 +494,7 @@ export const interiorSampleService = {
         } as any,
       });
       logger.info({ sampleId: sample.id, code, userId }, "InteriorSample created");
-      return mapSample(await tx.interiorSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE }));
+      return tx.interiorSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE });
     });
   },
 
@@ -472,7 +514,7 @@ export const interiorSampleService = {
       include: FULL_SAMPLE_INCLUDE,
     });
     logger.info({ sampleId: id, userId }, "InteriorSample updated");
-    return mapSample(updated);
+    return updated;
   },
 
   async deleteInteriorSample(id: string) {
@@ -481,29 +523,6 @@ export const interiorSampleService = {
       await tx.interiorSampleResult.deleteMany({ where: { interiorSampleId: id } });
       await tx.interiorLabAssignment.deleteMany({ where: { interiorSampleId: id } });
       return tx.interiorSample.delete({ where: { id } });
-    });
-  },
-
-  async assignInteriorSampleVoucher(id: string, userId?: number) {
-    return prisma.$transaction(async (tx) => {
-      const sample = await tx.interiorSample.findUnique({ where: { id } });
-      if (!sample) throw new HttpError("Interior sample not found", 404);
-      if (sample.voucherNumber !== null) {
-        const code = withVoucherCode(sample).voucherCode;
-        throw new HttpError(`Sample already has voucher ${code}`, 409);
-      }
-      // Secuencia independiente por categoría
-      const agg = await tx.interiorSample.aggregate({
-        where: { category: sample.category },
-        _max: { voucherNumber: true },
-      });
-      const nextNumber = (agg._max.voucherNumber ?? 0) + 1;
-      logger.info({ sampleId: id, voucherNumber: nextNumber, category: sample.category, userId }, "InteriorSample voucher assigned");
-      return mapSample(await tx.interiorSample.update({
-        where: { id },
-        data: { voucherNumber: nextNumber, updatedById: userId } as any,
-        include: FULL_SAMPLE_INCLUDE,
-      }));
     });
   },
 
@@ -534,9 +553,11 @@ export const interiorSampleService = {
     const { labAssignments: labAssignmentsData, ...sampleFields } = data;
 
     return prisma.$transaction(async (tx) => {
-      const count = await tx.interiorSample.count({ where: { interiorLevelId: labor.level.id } });
-      const sequentialNumber = count + labor.level.codeStart;
-      const code = `${labor.level.area.abbreviation}/${labor.level.abbreviation}/${labor.abbreviation}/${String(sequentialNumber).padStart(4, "0")}`;
+      const category = sampleFields.category ?? "EXPLORATION";
+      const prefix = category === "PRODUCTION" ? "M" : "EX";
+      const count = await tx.interiorSample.count({ where: { category } });
+      const sequentialNumber = count + 1;
+      const code = `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
 
       const sample = await tx.interiorSample.create({
         data: {
@@ -592,7 +613,7 @@ export const interiorSampleService = {
         "InteriorSample with results created",
       );
 
-      return mapSample(await tx.interiorSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE }));
+      return tx.interiorSample.findUnique({ where: { id: sample.id }, include: FULL_SAMPLE_INCLUDE });
     });
   },
 
@@ -630,7 +651,6 @@ export const interiorSampleService = {
       });
 
       if (labAssignmentsData !== undefined) {
-        // Borrar resultados y asignaciones previas
         await tx.interiorSampleResult.deleteMany({ where: { interiorSampleId: id } });
         await tx.interiorLabAssignment.deleteMany({ where: { interiorSampleId: id } });
 
@@ -673,7 +693,7 @@ export const interiorSampleService = {
       }
 
       logger.info({ sampleId: id, userId }, "InteriorSample with results updated");
-      return mapSample(await tx.interiorSample.findUnique({ where: { id }, include: FULL_SAMPLE_INCLUDE }));
+      return tx.interiorSample.findUnique({ where: { id }, include: FULL_SAMPLE_INCLUDE });
     });
   },
 
@@ -816,16 +836,20 @@ export const interiorSampleService = {
       where: { interiorLabAssignmentId_elementId: { interiorLabAssignmentId: data.interiorLabAssignmentId, elementId: data.elementId } },
     });
     if (clash) throw new HttpError("Result for this element already exists in this lab assignment", 409);
-    const result = await prisma.interiorSampleResult.create({
-      data: {
-        ...data,
-        interiorSampleId: assignment.interiorSampleId,
-        createdById: userId,
-        updatedById: userId,
-      } as any,
+
+    return prisma.$transaction(async (tx) => {
+      const result = await tx.interiorSampleResult.create({
+        data: {
+          ...data,
+          interiorSampleId: assignment.interiorSampleId,
+          createdById: userId,
+          updatedById: userId,
+        } as any,
+      });
+      await handleInteriorSampleDelivered(assignment.interiorSampleId, tx);
+      logger.info({ resultId: result.id, sampleId: assignment.interiorSampleId, userId }, "InteriorSampleResult created");
+      return result;
     });
-    logger.info({ resultId: result.id, userId }, "InteriorSampleResult created");
-    return result;
   },
 
   async updateInteriorSampleResult(id: string, data: UpdateInteriorSampleResultDTO, userId?: number) {
@@ -850,5 +874,144 @@ export const interiorSampleService = {
   async deleteInteriorSampleResult(id: string) {
     await this.getInteriorSampleResultById(id);
     return prisma.interiorSampleResult.delete({ where: { id } });
+  },
+
+  // ─── InteriorDispatch (Nota de Remisión) ─────────────────────────────────
+  async getInteriorDispatches(query: InteriorDispatchQuery) {
+    const { p, l, skip } = pg(query);
+    const where: any = {};
+    if (query.interiorLaboratoryId) where.interiorLaboratoryId = query.interiorLaboratoryId;
+    if (query.status) where.status = query.status;
+    const [data, total] = await Promise.all([
+      prisma.interiorSampleDispatch.findMany({
+        where,
+        skip,
+        take: l,
+        orderBy: { sentAt: "desc" },
+        include: DISPATCH_INCLUDE,
+      }),
+      prisma.interiorSampleDispatch.count({ where }),
+    ]);
+    return { data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+  },
+
+  async getInteriorDispatchById(id: string) {
+    const dispatch = await prisma.interiorSampleDispatch.findUnique({
+      where: { id },
+      include: DISPATCH_INCLUDE,
+    });
+    if (!dispatch) throw new HttpError("Interior dispatch not found", 404);
+    return dispatch;
+  },
+
+  async createInteriorDispatch(data: CreateInteriorDispatchDTO, userId?: number) {
+    const lab = await prisma.interiorLaboratory.findUnique({ where: { id: data.interiorLaboratoryId } });
+    if (!lab) throw new HttpError("Interior laboratory not found", 404);
+
+    const sampleIds = data.items.map((i) => i.interiorSampleId);
+    const samples = await prisma.interiorSample.findMany({ where: { id: { in: sampleIds } } });
+    if (samples.length !== sampleIds.length)
+      throw new HttpError("One or more samples not found", 404);
+
+    const allElementIds = [...new Set(data.items.flatMap((i) => i.elementIds))];
+    const elements = await prisma.element.findMany({ where: { id: { in: allElementIds } } });
+    if (elements.length !== allElementIds.length)
+      throw new HttpError("One or more elements not found", 404);
+
+    return prisma.$transaction(async (tx) => {
+      const dispatch = await tx.interiorSampleDispatch.create({
+        data: {
+          interiorLaboratoryId: data.interiorLaboratoryId,
+          projectName: data.projectName,
+          sentAt: new Date(data.sentAt),
+          notes: data.notes,
+          createdById: userId,
+          updatedById: userId,
+        } as any,
+      });
+
+      for (const itemData of data.items) {
+        const item = await tx.interiorDispatchItem.create({
+          data: {
+            dispatchId: dispatch.id,
+            interiorSampleId: itemData.interiorSampleId,
+            notes: itemData.notes,
+            createdById: userId,
+            updatedById: userId,
+          } as any,
+        });
+
+        for (const elementId of itemData.elementIds) {
+          await tx.interiorDispatchElement.create({
+            data: { dispatchItemId: item.id, elementId } as any,
+          });
+        }
+
+        await tx.interiorSample.update({
+          where: { id: itemData.interiorSampleId },
+          data: { status: "DISPATCHED", updatedById: userId } as any,
+        });
+      }
+
+      logger.info({ dispatchId: dispatch.id, sampleCount: data.items.length, userId }, "InteriorDispatch created");
+
+      return tx.interiorSampleDispatch.findUnique({ where: { id: dispatch.id }, include: DISPATCH_INCLUDE });
+    });
+  },
+
+  async updateInteriorDispatch(id: string, data: UpdateInteriorDispatchDTO, userId?: number) {
+    await this.getInteriorDispatchById(id);
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.interiorSampleDispatch.update({
+        where: { id },
+        data: {
+          ...data,
+          sentAt: data.sentAt ? new Date(data.sentAt) : undefined,
+          updatedById: userId,
+        } as any,
+        include: DISPATCH_INCLUDE,
+      });
+
+      // When manually completing a dispatch, mark items + samples as COMPLETED
+      if (data.status === "COMPLETED") {
+        const sampleIds = updated.items.map((i: any) => i.interiorSampleId);
+        if (sampleIds.length > 0) {
+          await tx.interiorDispatchItem.updateMany({
+            where: { dispatchId: id, status: "PENDING" },
+            data: { status: "COMPLETED" },
+          });
+          await tx.interiorSample.updateMany({
+            where: { id: { in: sampleIds } },
+            data: { status: "COMPLETED" },
+          });
+        }
+      }
+
+      logger.info({ dispatchId: id, userId }, "InteriorDispatch updated");
+      return tx.interiorSampleDispatch.findUnique({ where: { id }, include: DISPATCH_INCLUDE });
+    });
+  },
+
+  async deleteInteriorDispatch(id: string) {
+    const dispatch = await this.getInteriorDispatchById(id);
+    if (dispatch.status === "COMPLETED")
+      throw new HttpError("Cannot delete a completed dispatch", 409);
+
+    return prisma.$transaction(async (tx) => {
+      // Reset sample statuses to REGISTERED for samples not in other dispatches
+      const sampleIds = dispatch.items.map((i: any) => i.interiorSampleId);
+      for (const sampleId of sampleIds) {
+        const sample = await tx.interiorSample.findUnique({ where: { id: sampleId }, select: { status: true } });
+        if (sample?.status === "COMPLETED") continue;
+        const otherDispatch = await tx.interiorDispatchItem.findFirst({
+          where: { interiorSampleId: sampleId, dispatchId: { not: id } },
+        });
+        await tx.interiorSample.update({
+          where: { id: sampleId },
+          data: { status: otherDispatch ? "DISPATCHED" : "REGISTERED" },
+        });
+      }
+      return tx.interiorSampleDispatch.delete({ where: { id } });
+    });
   },
 };

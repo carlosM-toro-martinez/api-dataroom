@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import {
   createInteriorAreaSchema,
+  createInteriorDispatchSchema,
   createInteriorLabAssignmentSchema,
   createInteriorLaborSchema,
   createInteriorLaboratorySchema,
@@ -10,6 +11,7 @@ import {
   createInteriorSampleSchema,
   createInteriorSampleWithResultsSchema,
   interiorAreaQuerySchema,
+  interiorDispatchQuerySchema,
   interiorLabAssignmentQuerySchema,
   interiorLaborQuerySchema,
   interiorLaboratoryQuerySchema,
@@ -18,6 +20,7 @@ import {
   interiorSampleQuerySchema,
   interiorSampleResultQuerySchema,
   updateInteriorAreaSchema,
+  updateInteriorDispatchSchema,
   updateInteriorLabAssignmentSchema,
   updateInteriorLaborSchema,
   updateInteriorLaboratorySchema,
@@ -62,3 +65,7 @@ export type UpdateInteriorSampleResultDTO = z.infer<typeof updateInteriorSampleR
 
 export type CreateInteriorSampleWithResultsDTO = z.infer<typeof createInteriorSampleWithResultsSchema>;
 export type UpdateInteriorSampleWithResultsDTO = z.infer<typeof updateInteriorSampleWithResultsSchema>;
+
+export type InteriorDispatchQuery = z.infer<typeof interiorDispatchQuerySchema>;
+export type CreateInteriorDispatchDTO = z.infer<typeof createInteriorDispatchSchema>;
+export type UpdateInteriorDispatchDTO = z.infer<typeof updateInteriorDispatchSchema>;

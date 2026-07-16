@@ -134,12 +134,8 @@ export const surfaceSampleController = {
     try { ok(res, await surfaceSampleService.deleteSurfaceSample(vp(req).id)); }
     catch (e) { fail(res, e); }
   },
-  async assignSurfaceSampleVoucher(req: AuthRequest, res: Response) {
-    try { ok(res, await surfaceSampleService.assignSurfaceSampleVoucher(vp(req).id, uid(req))); }
-    catch (e) { fail(res, e); }
-  },
 
-  // ─── SurfaceSample con resultados (transacción) ───────────────────────────
+  // ─── SurfaceSample with results (transaction) ─────────────────────────────
   async createSurfaceSampleWithResults(req: AuthRequest, res: Response) {
     try { ok(res, await surfaceSampleService.createSurfaceSampleWithResults(req.body, uid(req)), 201); }
     catch (e) { fail(res, e); }
@@ -168,6 +164,28 @@ export const surfaceSampleController = {
   },
   async deleteSurfaceSampleResult(req: AuthRequest, res: Response) {
     try { ok(res, await surfaceSampleService.deleteSurfaceSampleResult(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+
+  // ─── SurfaceDispatch (Nota de Remisión) ───────────────────────────────────
+  async getSurfaceDispatches(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceDispatches(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async getSurfaceDispatchById(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceDispatchById(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+  async createSurfaceDispatch(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.createSurfaceDispatch(req.body, uid(req)), 201); }
+    catch (e) { fail(res, e); }
+  },
+  async updateSurfaceDispatch(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.updateSurfaceDispatch(vp(req).id, req.body, uid(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async deleteSurfaceDispatch(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.deleteSurfaceDispatch(vp(req).id)); }
     catch (e) { fail(res, e); }
   },
 };

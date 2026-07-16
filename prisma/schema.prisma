@@ -23,8 +23,10 @@ model User {
   resetTokenExpiry   DateTime?
   refreshToken       String?
   refreshTokenExpiry DateTime?
-  interiorSamples    InteriorSample[] @relation("InteriorSampleCreatedBy")
-  surfaceSamples     SurfaceSample[]  @relation("SurfaceSampleCreatedBy")
+  interiorSamples    InteriorSample[]        @relation("InteriorSampleCreatedBy")
+  surfaceSamples     SurfaceSample[]         @relation("SurfaceSampleCreatedBy")
+  interiorDispatches InteriorSampleDispatch[] @relation("InteriorDispatchCreatedBy")
+  surfaceDispatches  SurfaceSampleDispatch[]  @relation("SurfaceDispatchCreatedBy")
 }
 
 ////////////////////////////////
@@ -457,9 +459,11 @@ model Element {
   updatedAt       DateTime               @updatedAt
   createdById     Int?
   updatedById     Int?
-  results         SampleResult[]
-  interiorResults InteriorSampleResult[]
-  surfaceResults  SurfaceSampleResult[]
+  results                  SampleResult[]
+  interiorResults          InteriorSampleResult[]
+  surfaceResults           SurfaceSampleResult[]
+  interiorDispatchElements InteriorDispatchElement[]
+  surfaceDispatchElements  SurfaceDispatchElement[]
 
   @@unique([symbol, defaultUnit])
   @@index([symbol])
@@ -581,6 +585,7 @@ model InteriorLaboratory {
   createdById  Int?
   updatedById  Int?
   assignments  InteriorLabAssignment[]
+  dispatches   InteriorSampleDispatch[]
 }
 
 model InteriorSample {
@@ -591,9 +596,9 @@ model InteriorSample {
   name                String?
   code                String                  @unique
   sequentialNumber    Int
-  voucherNumber       Int?
   priority            SamplePriority          @default(NORMAL)
   category            SampleCategory          @default(EXPLORATION)
+  status              SampleStatus            @default(REGISTERED)
   east                Float?
   north               Float?
   elevation           Float?
@@ -608,14 +613,14 @@ model InteriorSample {
   createdBy           User?                   @relation("InteriorSampleCreatedBy", fields: [createdById], references: [id])
   labAssignments      InteriorLabAssignment[]
   results             InteriorSampleResult[]  @relation("InteriorSampleToResults")
+  dispatchItems       InteriorDispatchItem[]
 
-  @@unique([interiorLevelId, sequentialNumber])
   @@index([interiorLaborId])
   @@index([interiorLevelId])
   @@index([interiorObjectiveId])
   @@index([priority])
   @@index([category])
-  @@index([voucherNumber])
+  @@index([status])
   @@index([east, north])
 }
 
@@ -660,6 +665,57 @@ model InteriorSampleResult {
   @@index([elementId])
 }
 
+model InteriorSampleDispatch {
+  id                   String                  @id @default(uuid())
+  interiorLaboratoryId String
+  projectName          String?
+  sentAt               DateTime
+  notes                String?
+  status               DispatchStatus          @default(PENDING)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  createdById          Int?
+  updatedById          Int?
+  laboratory           InteriorLaboratory      @relation(fields: [interiorLaboratoryId], references: [id])
+  createdBy            User?                   @relation("InteriorDispatchCreatedBy", fields: [createdById], references: [id])
+  items                InteriorDispatchItem[]
+
+  @@index([interiorLaboratoryId])
+  @@index([status])
+}
+
+model InteriorDispatchItem {
+  id                String                    @id @default(uuid())
+  dispatchId        String
+  interiorSampleId  String
+  status            DispatchStatus            @default(PENDING)
+  notes             String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  createdById       Int?
+  updatedById       Int?
+  dispatch          InteriorSampleDispatch    @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  sample            InteriorSample            @relation(fields: [interiorSampleId], references: [id], onDelete: Cascade)
+  requestedElements InteriorDispatchElement[]
+
+  @@unique([dispatchId, interiorSampleId])
+  @@index([dispatchId])
+  @@index([interiorSampleId])
+  @@index([status])
+}
+
+model InteriorDispatchElement {
+  id             String               @id @default(uuid())
+  dispatchItemId String
+  elementId      String
+  dispatchItem   InteriorDispatchItem @relation(fields: [dispatchItemId], references: [id], onDelete: Cascade)
+  element        Element              @relation(fields: [elementId], references: [id])
+
+  @@unique([dispatchItemId, elementId])
+  @@index([dispatchItemId])
+  @@index([elementId])
+}
+
 ////////////////////////////////
 // SUPERFICIE - PROPUESTA DE MUESTRAS
 ////////////////////////////////
@@ -697,6 +753,7 @@ model SurfaceLaboratory {
   createdById  Int?
   updatedById  Int?
   assignments  SurfaceLabAssignment[]
+  dispatches   SurfaceSampleDispatch[]
 }
 
 model SurfaceSample {
@@ -706,9 +763,9 @@ model SurfaceSample {
   name               String?
   code               String                 @unique
   sequentialNumber   Int
-  voucherNumber      Int?
   priority           SamplePriority         @default(NORMAL)
   category           SampleCategory         @default(EXPLORATION)
+  status             SampleStatus           @default(REGISTERED)
   east               Float?
   north              Float?
   elevation          Float?
@@ -722,13 +779,13 @@ model SurfaceSample {
   createdBy          User?                  @relation("SurfaceSampleCreatedBy", fields: [createdById], references: [id])
   labAssignments     SurfaceLabAssignment[]
   results            SurfaceSampleResult[]
+  dispatchItems      SurfaceDispatchItem[]
 
-  @@unique([surfaceAreaId, sequentialNumber])
   @@index([surfaceAreaId])
   @@index([surfaceObjectiveId])
   @@index([priority])
   @@index([category])
-  @@index([voucherNumber])
+  @@index([status])
   @@index([east, north])
 }
 
@@ -769,6 +826,57 @@ model SurfaceSampleResult {
   @@unique([surfaceLabAssignmentId, elementId])
   @@index([surfaceSampleId])
   @@index([surfaceLabAssignmentId])
+  @@index([elementId])
+}
+
+model SurfaceSampleDispatch {
+  id                  String                 @id @default(uuid())
+  surfaceLaboratoryId String
+  projectName         String?
+  sentAt              DateTime
+  notes               String?
+  status              DispatchStatus         @default(PENDING)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  createdById         Int?
+  updatedById         Int?
+  laboratory          SurfaceLaboratory      @relation(fields: [surfaceLaboratoryId], references: [id])
+  createdBy           User?                  @relation("SurfaceDispatchCreatedBy", fields: [createdById], references: [id])
+  items               SurfaceDispatchItem[]
+
+  @@index([surfaceLaboratoryId])
+  @@index([status])
+}
+
+model SurfaceDispatchItem {
+  id                String                   @id @default(uuid())
+  dispatchId        String
+  surfaceSampleId   String
+  status            DispatchStatus           @default(PENDING)
+  notes             String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  createdById       Int?
+  updatedById       Int?
+  dispatch          SurfaceSampleDispatch    @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  sample            SurfaceSample            @relation(fields: [surfaceSampleId], references: [id], onDelete: Cascade)
+  requestedElements SurfaceDispatchElement[]
+
+  @@unique([dispatchId, surfaceSampleId])
+  @@index([dispatchId])
+  @@index([surfaceSampleId])
+  @@index([status])
+}
+
+model SurfaceDispatchElement {
+  id             String              @id @default(uuid())
+  dispatchItemId String
+  elementId      String
+  dispatchItem   SurfaceDispatchItem @relation(fields: [dispatchItemId], references: [id], onDelete: Cascade)
+  element        Element             @relation(fields: [elementId], references: [id])
+
+  @@unique([dispatchItemId, elementId])
+  @@index([dispatchItemId])
   @@index([elementId])
 }
 
@@ -837,4 +945,15 @@ enum SamplePriority {
 enum SampleCategory {
   EXPLORATION
   PRODUCTION
+}
+
+enum SampleStatus {
+  REGISTERED
+  DISPATCHED
+  COMPLETED
+}
+
+enum DispatchStatus {
+  PENDING
+  COMPLETED
 }

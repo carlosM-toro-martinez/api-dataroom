@@ -4,6 +4,7 @@ import { authenticate } from "../../middleware/auth.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import {
   createInteriorAreaSchema,
+  createInteriorDispatchSchema,
   createInteriorLabAssignmentSchema,
   createInteriorLaborSchema,
   createInteriorLaboratorySchema,
@@ -14,6 +15,7 @@ import {
   createInteriorSampleWithResultsSchema,
   idSchema,
   interiorAreaQuerySchema,
+  interiorDispatchQuerySchema,
   interiorLabAssignmentQuerySchema,
   interiorLaborQuerySchema,
   interiorLaboratoryQuerySchema,
@@ -22,6 +24,7 @@ import {
   interiorSampleQuerySchema,
   interiorSampleResultQuerySchema,
   updateInteriorAreaSchema,
+  updateInteriorDispatchSchema,
   updateInteriorLabAssignmentSchema,
   updateInteriorLaborSchema,
   updateInteriorLaboratorySchema,
@@ -99,7 +102,6 @@ router.get("/samples/:id", vp(idSchema), interiorSampleController.getInteriorSam
 router.post("/samples", validate(createInteriorSampleSchema), interiorSampleController.createInteriorSample);
 router.patch("/samples/:id", vp(idSchema), validate(updateInteriorSampleSchema), interiorSampleController.updateInteriorSample);
 router.delete("/samples/:id", vp(idSchema), interiorSampleController.deleteInteriorSample);
-router.post("/samples/:id/assign-voucher", vp(idSchema), interiorSampleController.assignInteriorSampleVoucher);
 
 // ─── InteriorLabAssignment ────────────────────────────────────────────────────
 router.get("/lab-assignments", vq(interiorLabAssignmentQuerySchema), interiorSampleController.getInteriorLabAssignments);
@@ -114,5 +116,12 @@ router.get("/results/:id", vp(idSchema), interiorSampleController.getInteriorSam
 router.post("/results", validate(createInteriorSampleResultSchema), interiorSampleController.createInteriorSampleResult);
 router.patch("/results/:id", vp(idSchema), validate(updateInteriorSampleResultSchema), interiorSampleController.updateInteriorSampleResult);
 router.delete("/results/:id", vp(idSchema), interiorSampleController.deleteInteriorSampleResult);
+
+// ─── InteriorDispatch (Nota de Remisión) ─────────────────────────────────────
+router.get("/dispatches", vq(interiorDispatchQuerySchema), interiorSampleController.getInteriorDispatches);
+router.get("/dispatches/:id", vp(idSchema), interiorSampleController.getInteriorDispatchById);
+router.post("/dispatches", validate(createInteriorDispatchSchema), interiorSampleController.createInteriorDispatch);
+router.patch("/dispatches/:id", vp(idSchema), validate(updateInteriorDispatchSchema), interiorSampleController.updateInteriorDispatch);
+router.delete("/dispatches/:id", vp(idSchema), interiorSampleController.deleteInteriorDispatch);
 
 export default router;

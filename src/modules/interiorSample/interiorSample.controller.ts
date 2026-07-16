@@ -156,11 +156,6 @@ export const interiorSampleController = {
     try { ok(res, await interiorSampleService.deleteInteriorSample(vp(req).id)); }
     catch (e) { fail(res, e); }
   },
-  async assignInteriorSampleVoucher(req: AuthRequest, res: Response) {
-    try { ok(res, await interiorSampleService.assignInteriorSampleVoucher(vp(req).id, uid(req))); }
-    catch (e) { fail(res, e); }
-  },
-
   // ─── InteriorSample with results (transaction) ────────────────────────────
   async createInteriorSampleWithResults(req: AuthRequest, res: Response) {
     try { ok(res, await interiorSampleService.createInteriorSampleWithResults(req.body, uid(req)), 201); }
@@ -212,6 +207,28 @@ export const interiorSampleController = {
   },
   async deleteInteriorSampleResult(req: AuthRequest, res: Response) {
     try { ok(res, await interiorSampleService.deleteInteriorSampleResult(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+
+  // ─── InteriorDispatch (Nota de Remisión) ─────────────────────────────────
+  async getInteriorDispatches(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.getInteriorDispatches(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async getInteriorDispatchById(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.getInteriorDispatchById(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+  async createInteriorDispatch(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.createInteriorDispatch(req.body, uid(req)), 201); }
+    catch (e) { fail(res, e); }
+  },
+  async updateInteriorDispatch(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.updateInteriorDispatch(vp(req).id, req.body, uid(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async deleteInteriorDispatch(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.deleteInteriorDispatch(vp(req).id)); }
     catch (e) { fail(res, e); }
   },
 };

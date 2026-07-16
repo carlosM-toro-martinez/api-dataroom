@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import {
   createSurfaceAreaSchema,
+  createSurfaceDispatchSchema,
   createSurfaceLabAssignmentSchema,
   createSurfaceLaboratorySchema,
   createSurfaceObjectiveSchema,
@@ -8,12 +9,14 @@ import {
   createSurfaceSampleSchema,
   createSurfaceSampleWithResultsSchema,
   surfaceAreaQuerySchema,
+  surfaceDispatchQuerySchema,
   surfaceLabAssignmentQuerySchema,
   surfaceLaboratoryQuerySchema,
   surfaceObjectiveQuerySchema,
   surfaceSampleQuerySchema,
   surfaceSampleResultQuerySchema,
   updateSurfaceAreaSchema,
+  updateSurfaceDispatchSchema,
   updateSurfaceLabAssignmentSchema,
   updateSurfaceLaboratorySchema,
   updateSurfaceObjectiveSchema,
@@ -48,3 +51,7 @@ export type UpdateSurfaceSampleResultDTO = z.infer<typeof updateSurfaceSampleRes
 
 export type CreateSurfaceSampleWithResultsDTO = z.infer<typeof createSurfaceSampleWithResultsSchema>;
 export type UpdateSurfaceSampleWithResultsDTO = z.infer<typeof updateSurfaceSampleWithResultsSchema>;
+
+export type SurfaceDispatchQuery = z.infer<typeof surfaceDispatchQuerySchema>;
+export type CreateSurfaceDispatchDTO = z.infer<typeof createSurfaceDispatchSchema>;
+export type UpdateSurfaceDispatchDTO = z.infer<typeof updateSurfaceDispatchSchema>;
