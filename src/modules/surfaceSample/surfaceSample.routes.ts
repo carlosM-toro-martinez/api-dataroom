@@ -104,4 +104,7 @@ router.post("/dispatches", validate(createSurfaceDispatchSchema), surfaceSampleC
 router.patch("/dispatches/:id", vp(idSchema), validate(updateSurfaceDispatchSchema), surfaceSampleController.updateSurfaceDispatch);
 router.delete("/dispatches/:id", vp(idSchema), surfaceSampleController.deleteSurfaceDispatch);
 
+// ─── Hierarchy ────────────────────────────────────────────────────────────────
+router.get("/hierarchy", surfaceSampleController.getSurfaceHierarchy);
+
 export default router;

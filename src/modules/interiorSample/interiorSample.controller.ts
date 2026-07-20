@@ -231,4 +231,10 @@ export const interiorSampleController = {
     try { ok(res, await interiorSampleService.deleteInteriorDispatch(vp(req).id)); }
     catch (e) { fail(res, e); }
   },
+
+  // ─── Hierarchy ────────────────────────────────────────────────────────────
+  async getInteriorHierarchy(req: AuthRequest, res: Response) {
+    try { ok(res, await interiorSampleService.getInteriorHierarchy()); }
+    catch (e) { fail(res, e); }
+  },
 };

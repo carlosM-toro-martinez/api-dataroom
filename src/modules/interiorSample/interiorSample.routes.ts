@@ -124,4 +124,7 @@ router.post("/dispatches", validate(createInteriorDispatchSchema), interiorSampl
 router.patch("/dispatches/:id", vp(idSchema), validate(updateInteriorDispatchSchema), interiorSampleController.updateInteriorDispatch);
 router.delete("/dispatches/:id", vp(idSchema), interiorSampleController.deleteInteriorDispatch);
 
+// ─── Hierarchy ────────────────────────────────────────────────────────────────
+router.get("/hierarchy", interiorSampleController.getInteriorHierarchy);
+
 export default router;

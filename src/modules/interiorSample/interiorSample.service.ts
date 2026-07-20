@@ -1014,4 +1014,101 @@ export const interiorSampleService = {
       return tx.interiorSampleDispatch.delete({ where: { id } });
     });
   },
+
+  // ─── Hierarchy ────────────────────────────────────────────────────────────
+  async getInteriorHierarchy() {
+    const CATS = ["exploration", "production"] as const;
+    const STAS = ["registered", "dispatched", "completed"] as const;
+    const emptyCat = () => ({ registered: 0, dispatched: 0, completed: 0, total: 0 });
+    const emptyTotals = () => ({ exploration: emptyCat(), production: emptyCat(), total: 0 });
+
+    const [areas, counts] = await Promise.all([
+      prisma.interiorArea.findMany({
+        orderBy: { name: "asc" },
+        include: {
+          levels: {
+            orderBy: { name: "asc" },
+            include: { labors: { orderBy: { name: "asc" } } },
+          },
+        },
+      }),
+      prisma.interiorSample.groupBy({
+        by: ["interiorLaborId", "category", "status"],
+        _count: { id: true },
+      }),
+    ]);
+
+    // Map: laborId → { exploration/production → { registered/dispatched/completed → n } }
+    const laborMap = new Map<string, Record<string, Record<string, number>>>();
+    for (const row of counts) {
+      const lid = row.interiorLaborId;
+      if (!laborMap.has(lid)) laborMap.set(lid, {});
+      const cat = row.category.toLowerCase();
+      const sta = row.status.toLowerCase();
+      const entry = laborMap.get(lid)!;
+      if (!entry[cat]) entry[cat] = {};
+      entry[cat][sta] = row._count.id;
+    }
+
+    const getLaborTotals = (laborId: string) => {
+      const raw = laborMap.get(laborId) || {};
+      const t = emptyTotals();
+      for (const cat of CATS) {
+        for (const sta of STAS) {
+          const n = raw[cat]?.[sta] || 0;
+          t[cat][sta] += n;
+          t[cat].total += n;
+          t.total += n;
+        }
+      }
+      return t;
+    };
+
+    const add = (
+      a: ReturnType<typeof emptyTotals>,
+      b: ReturnType<typeof emptyTotals>,
+    ) => {
+      for (const cat of CATS) {
+        for (const sta of STAS) a[cat][sta] += b[cat][sta];
+        a[cat].total += b[cat].total;
+      }
+      a.total += b.total;
+    };
+
+    return areas.map((area) => {
+      const areaTotals = emptyTotals();
+      const levels = area.levels.map((level) => {
+        const levelTotals = emptyTotals();
+        const labors = level.labors.map((labor) => {
+          const t = getLaborTotals(labor.id);
+          add(levelTotals, t);
+          return {
+            id: labor.id,
+            name: labor.name,
+            abbreviation: labor.abbreviation,
+            description: labor.description,
+            samples: t,
+          };
+        });
+        add(areaTotals, levelTotals);
+        return {
+          id: level.id,
+          name: level.name,
+          abbreviation: level.abbreviation,
+          elevation: level.elevation,
+          description: level.description,
+          samples: levelTotals,
+          labors,
+        };
+      });
+      return {
+        id: area.id,
+        name: area.name,
+        abbreviation: area.abbreviation,
+        description: area.description,
+        samples: areaTotals,
+        levels,
+      };
+    });
+  },
 };

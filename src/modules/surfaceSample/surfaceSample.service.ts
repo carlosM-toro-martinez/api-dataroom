@@ -826,4 +826,51 @@ export const surfaceSampleService = {
       return tx.surfaceSampleDispatch.delete({ where: { id } });
     });
   },
+
+  // ─── Hierarchy ────────────────────────────────────────────────────────────
+  async getSurfaceHierarchy() {
+    const CATS = ["exploration", "production"] as const;
+    const STAS = ["registered", "dispatched", "completed"] as const;
+    const emptyCat = () => ({ registered: 0, dispatched: 0, completed: 0, total: 0 });
+
+    const [areas, counts] = await Promise.all([
+      prisma.surfaceArea.findMany({ orderBy: { name: "asc" } }),
+      prisma.surfaceSample.groupBy({
+        by: ["surfaceAreaId", "category", "status"],
+        _count: { id: true },
+      }),
+    ]);
+
+    // Map: areaId → { exploration/production → { registered/dispatched/completed → n } }
+    const areaMap = new Map<string, Record<string, Record<string, number>>>();
+    for (const row of counts) {
+      const aid = row.surfaceAreaId;
+      if (!areaMap.has(aid)) areaMap.set(aid, {});
+      const cat = row.category.toLowerCase();
+      const sta = row.status.toLowerCase();
+      const entry = areaMap.get(aid)!;
+      if (!entry[cat]) entry[cat] = {};
+      entry[cat][sta] = row._count.id;
+    }
+
+    return areas.map((area) => {
+      const raw = areaMap.get(area.id) || {};
+      const samples = { exploration: emptyCat(), production: emptyCat(), total: 0 };
+      for (const cat of CATS) {
+        for (const sta of STAS) {
+          const n = raw[cat]?.[sta] || 0;
+          samples[cat][sta] += n;
+          samples[cat].total += n;
+          samples.total += n;
+        }
+      }
+      return {
+        id: area.id,
+        name: area.name,
+        abbreviation: area.abbreviation,
+        description: area.description,
+        samples,
+      };
+    });
+  },
 };

@@ -188,4 +188,10 @@ export const surfaceSampleController = {
     try { ok(res, await surfaceSampleService.deleteSurfaceDispatch(vp(req).id)); }
     catch (e) { fail(res, e); }
   },
+
+  // ─── Hierarchy ────────────────────────────────────────────────────────────
+  async getSurfaceHierarchy(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceHierarchy()); }
+    catch (e) { fail(res, e); }
+  },
 };
