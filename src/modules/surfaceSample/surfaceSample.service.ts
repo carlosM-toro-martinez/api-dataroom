@@ -5,7 +5,9 @@ import type {
   CreateSurfaceAreaDTO,
   CreateSurfaceDispatchDTO,
   CreateSurfaceLabAssignmentDTO,
+  CreateSurfaceLaborDTO,
   CreateSurfaceLaboratoryDTO,
+  CreateSurfaceLevelDTO,
   CreateSurfaceObjectiveDTO,
   CreateSurfaceSampleDTO,
   CreateSurfaceSampleResultDTO,
@@ -13,14 +15,18 @@ import type {
   SurfaceAreaQuery,
   SurfaceDispatchQuery,
   SurfaceLabAssignmentQuery,
+  SurfaceLaborQuery,
   SurfaceLaboratoryQuery,
+  SurfaceLevelQuery,
   SurfaceObjectiveQuery,
   SurfaceSampleQuery,
   SurfaceSampleResultQuery,
   UpdateSurfaceAreaDTO,
   UpdateSurfaceDispatchDTO,
   UpdateSurfaceLabAssignmentDTO,
+  UpdateSurfaceLaborDTO,
   UpdateSurfaceLaboratoryDTO,
+  UpdateSurfaceLevelDTO,
   UpdateSurfaceObjectiveDTO,
   UpdateSurfaceSampleDTO,
   UpdateSurfaceSampleResultDTO,
@@ -36,7 +42,11 @@ const pg = (q: any) => {
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
 
 const FULL_SAMPLE_INCLUDE = {
-  area: { select: { id: true, name: true, abbreviation: true } },
+  labor: {
+    include: {
+      level: { include: { area: { select: { id: true, name: true, abbreviation: true } } } },
+    },
+  },
   objective: { select: { id: true, name: true } },
   createdBy: { select: { id: true, nombre: true } },
   labAssignments: {
@@ -114,7 +124,7 @@ export const surfaceSampleService = {
         skip,
         take: l,
         orderBy: { name: "asc" },
-        include: { _count: { select: { samples: true } } },
+        include: { levels: { select: { id: true, name: true, abbreviation: true } } },
       }),
       prisma.surfaceArea.count({ where }),
     ]);
@@ -122,7 +132,14 @@ export const surfaceSampleService = {
   },
 
   async getSurfaceAreaById(id: string) {
-    const area = await prisma.surfaceArea.findUnique({ where: { id } });
+    const area = await prisma.surfaceArea.findUnique({
+      where: { id },
+      include: {
+        levels: {
+          include: { labors: { select: { id: true, name: true, abbreviation: true } } },
+        },
+      },
+    });
     if (!area) throw new HttpError("Surface area not found", 404);
     return area;
   },
@@ -155,6 +172,161 @@ export const surfaceSampleService = {
   async deleteSurfaceArea(id: string) {
     await this.getSurfaceAreaById(id);
     return prisma.surfaceArea.delete({ where: { id } });
+  },
+
+  // ─── SurfaceLevel ─────────────────────────────────────────────────────────
+  async getSurfaceLevels(query: SurfaceLevelQuery) {
+    const { p, l, skip } = pg(query);
+    const where: any = {};
+    if (query.surfaceAreaId) where.surfaceAreaId = query.surfaceAreaId;
+    if (query.search)
+      where.OR = [
+        { name: { contains: query.search, mode: "insensitive" as const } },
+        { abbreviation: { contains: query.search, mode: "insensitive" as const } },
+      ];
+    const [data, total] = await Promise.all([
+      prisma.surfaceLevel.findMany({
+        where,
+        skip,
+        take: l,
+        orderBy: { name: "asc" },
+        include: { area: { select: { id: true, name: true, abbreviation: true } } },
+      }),
+      prisma.surfaceLevel.count({ where }),
+    ]);
+    return { data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+  },
+
+  async getSurfaceLevelById(id: string) {
+    const level = await prisma.surfaceLevel.findUnique({
+      where: { id },
+      include: {
+        area: { select: { id: true, name: true, abbreviation: true } },
+        labors: { select: { id: true, name: true, abbreviation: true } },
+      },
+    });
+    if (!level) throw new HttpError("Surface level not found", 404);
+    return level;
+  },
+
+  async createSurfaceLevel(data: CreateSurfaceLevelDTO, userId?: number) {
+    const area = await prisma.surfaceArea.findUnique({ where: { id: data.surfaceAreaId } });
+    if (!area) throw new HttpError("Surface area not found", 404);
+    const existing = await prisma.surfaceLevel.findUnique({
+      where: { surfaceAreaId_abbreviation: { surfaceAreaId: data.surfaceAreaId, abbreviation: data.abbreviation } },
+    });
+    if (existing) throw new HttpError(`Level abbreviation '${data.abbreviation}' already exists in this area`, 409);
+    const level = await prisma.surfaceLevel.create({
+      data: { ...data, createdById: userId, updatedById: userId } as any,
+    });
+    logger.info({ levelId: level.id, userId }, "SurfaceLevel created");
+    return level;
+  },
+
+  async updateSurfaceLevel(id: string, data: UpdateSurfaceLevelDTO, userId?: number) {
+    const current = await this.getSurfaceLevelById(id);
+    if (data.surfaceAreaId) {
+      const area = await prisma.surfaceArea.findUnique({ where: { id: data.surfaceAreaId } });
+      if (!area) throw new HttpError("Surface area not found", 404);
+    }
+    if (data.abbreviation) {
+      const areaId = data.surfaceAreaId ?? current.surfaceAreaId;
+      const clash = await prisma.surfaceLevel.findUnique({
+        where: { surfaceAreaId_abbreviation: { surfaceAreaId: areaId, abbreviation: data.abbreviation } },
+      });
+      if (clash && clash.id !== id)
+        throw new HttpError(`Level abbreviation '${data.abbreviation}' already exists in this area`, 409);
+    }
+    const updated = await prisma.surfaceLevel.update({
+      where: { id },
+      data: { ...data, updatedById: userId } as any,
+    });
+    logger.info({ levelId: id, userId }, "SurfaceLevel updated");
+    return updated;
+  },
+
+  async deleteSurfaceLevel(id: string) {
+    await this.getSurfaceLevelById(id);
+    return prisma.surfaceLevel.delete({ where: { id } });
+  },
+
+  // ─── SurfaceLabor ─────────────────────────────────────────────────────────
+  async getSurfaceLabors(query: SurfaceLaborQuery) {
+    const { p, l, skip } = pg(query);
+    const where: any = {};
+    if (query.surfaceLevelId) where.surfaceLevelId = query.surfaceLevelId;
+    if (query.search)
+      where.OR = [
+        { name: { contains: query.search, mode: "insensitive" as const } },
+        { abbreviation: { contains: query.search, mode: "insensitive" as const } },
+      ];
+    const [data, total] = await Promise.all([
+      prisma.surfaceLabor.findMany({
+        where,
+        skip,
+        take: l,
+        orderBy: { name: "asc" },
+        include: {
+          level: {
+            include: { area: { select: { id: true, name: true, abbreviation: true } } },
+          },
+        },
+      }),
+      prisma.surfaceLabor.count({ where }),
+    ]);
+    return { data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+  },
+
+  async getSurfaceLaborById(id: string) {
+    const labor = await prisma.surfaceLabor.findUnique({
+      where: { id },
+      include: {
+        level: { include: { area: { select: { id: true, name: true, abbreviation: true } } } },
+      },
+    });
+    if (!labor) throw new HttpError("Surface labor not found", 404);
+    return labor;
+  },
+
+  async createSurfaceLabor(data: CreateSurfaceLaborDTO, userId?: number) {
+    const level = await prisma.surfaceLevel.findUnique({ where: { id: data.surfaceLevelId } });
+    if (!level) throw new HttpError("Surface level not found", 404);
+    const existing = await prisma.surfaceLabor.findUnique({
+      where: { surfaceLevelId_abbreviation: { surfaceLevelId: data.surfaceLevelId, abbreviation: data.abbreviation } },
+    });
+    if (existing) throw new HttpError(`Labor abbreviation '${data.abbreviation}' already exists in this level`, 409);
+    const labor = await prisma.surfaceLabor.create({
+      data: { ...data, createdById: userId, updatedById: userId } as any,
+    });
+    logger.info({ laborId: labor.id, userId }, "SurfaceLabor created");
+    return labor;
+  },
+
+  async updateSurfaceLabor(id: string, data: UpdateSurfaceLaborDTO, userId?: number) {
+    const current = await this.getSurfaceLaborById(id);
+    if (data.surfaceLevelId) {
+      const level = await prisma.surfaceLevel.findUnique({ where: { id: data.surfaceLevelId } });
+      if (!level) throw new HttpError("Surface level not found", 404);
+    }
+    if (data.abbreviation) {
+      const levelId = data.surfaceLevelId ?? current.surfaceLevelId;
+      const clash = await prisma.surfaceLabor.findUnique({
+        where: { surfaceLevelId_abbreviation: { surfaceLevelId: levelId, abbreviation: data.abbreviation } },
+      });
+      if (clash && clash.id !== id)
+        throw new HttpError(`Labor abbreviation '${data.abbreviation}' already exists in this level`, 409);
+    }
+    const updated = await prisma.surfaceLabor.update({
+      where: { id },
+      data: { ...data, updatedById: userId } as any,
+    });
+    logger.info({ laborId: id, userId }, "SurfaceLabor updated");
+    return updated;
+  },
+
+  async deleteSurfaceLabor(id: string) {
+    await this.getSurfaceLaborById(id);
+    return prisma.surfaceLabor.delete({ where: { id } });
   },
 
   // ─── SurfaceObjective ─────────────────────────────────────────────────────
@@ -342,7 +514,7 @@ export const surfaceSampleService = {
   async getSurfaceSamples(query: SurfaceSampleQuery) {
     const { p, l, skip } = pg(query);
     const where: any = {};
-    if (query.surfaceAreaId) where.surfaceAreaId = query.surfaceAreaId;
+    if (query.surfaceLaborId) where.surfaceLaborId = query.surfaceLaborId;
     if (query.surfaceObjectiveId) where.surfaceObjectiveId = query.surfaceObjectiveId;
     if (query.createdById) where.createdById = query.createdById;
     if (query.priority) where.priority = query.priority;
@@ -380,8 +552,11 @@ export const surfaceSampleService = {
   },
 
   async createSurfaceSample(data: CreateSurfaceSampleDTO, userId?: number) {
-    const area = await prisma.surfaceArea.findUnique({ where: { id: data.surfaceAreaId } });
-    if (!area) throw new HttpError("Surface area not found", 404);
+    const labor = await prisma.surfaceLabor.findUnique({
+      where: { id: data.surfaceLaborId },
+      include: { level: { include: { area: true } } },
+    });
+    if (!labor) throw new HttpError("Surface labor not found", 404);
     const objective = await prisma.surfaceObjective.findUnique({ where: { id: data.surfaceObjectiveId } });
     if (!objective) throw new HttpError("Surface objective not found", 404);
 
@@ -394,6 +569,7 @@ export const surfaceSampleService = {
       const sample = await tx.surfaceSample.create({
         data: {
           ...data,
+          surfaceLevelId: labor.level.id,
           code,
           sequentialNumber,
           sampledAt: toDate(data.sampledAt),
@@ -436,8 +612,11 @@ export const surfaceSampleService = {
 
   // ─── SurfaceSample con resultados (transacción) ───────────────────────────
   async createSurfaceSampleWithResults(data: CreateSurfaceSampleWithResultsDTO, userId?: number) {
-    const area = await prisma.surfaceArea.findUnique({ where: { id: data.surfaceAreaId } });
-    if (!area) throw new HttpError("Surface area not found", 404);
+    const labor = await prisma.surfaceLabor.findUnique({
+      where: { id: data.surfaceLaborId },
+      include: { level: { include: { area: true } } },
+    });
+    if (!labor) throw new HttpError("Surface labor not found", 404);
     const objective = await prisma.surfaceObjective.findUnique({ where: { id: data.surfaceObjectiveId } });
     if (!objective) throw new HttpError("Surface objective not found", 404);
 
@@ -467,6 +646,7 @@ export const surfaceSampleService = {
       const sample = await tx.surfaceSample.create({
         data: {
           ...sampleFields,
+          surfaceLevelId: labor.level.id,
           code,
           sequentialNumber,
           sampledAt: toDate(sampleFields.sampledAt),
@@ -832,44 +1012,94 @@ export const surfaceSampleService = {
     const CATS = ["exploration", "production"] as const;
     const STAS = ["registered", "dispatched", "completed"] as const;
     const emptyCat = () => ({ registered: 0, dispatched: 0, completed: 0, total: 0 });
+    const emptyTotals = () => ({ exploration: emptyCat(), production: emptyCat(), total: 0 });
 
     const [areas, counts] = await Promise.all([
-      prisma.surfaceArea.findMany({ orderBy: { name: "asc" } }),
+      prisma.surfaceArea.findMany({
+        orderBy: { name: "asc" },
+        include: {
+          levels: {
+            orderBy: { name: "asc" },
+            include: { labors: { orderBy: { name: "asc" } } },
+          },
+        },
+      }),
       prisma.surfaceSample.groupBy({
-        by: ["surfaceAreaId", "category", "status"],
+        by: ["surfaceLaborId", "category", "status"],
         _count: { id: true },
       }),
     ]);
 
-    // Map: areaId → { exploration/production → { registered/dispatched/completed → n } }
-    const areaMap = new Map<string, Record<string, Record<string, number>>>();
+    // Map: laborId → { exploration/production → { registered/dispatched/completed → n } }
+    const laborMap = new Map<string, Record<string, Record<string, number>>>();
     for (const row of counts) {
-      const aid = row.surfaceAreaId;
-      if (!areaMap.has(aid)) areaMap.set(aid, {});
+      const lid = row.surfaceLaborId;
+      if (!laborMap.has(lid)) laborMap.set(lid, {});
       const cat = row.category.toLowerCase();
       const sta = row.status.toLowerCase();
-      const entry = areaMap.get(aid)!;
+      const entry = laborMap.get(lid)!;
       if (!entry[cat]) entry[cat] = {};
       entry[cat][sta] = row._count.id;
     }
 
-    return areas.map((area) => {
-      const raw = areaMap.get(area.id) || {};
-      const samples = { exploration: emptyCat(), production: emptyCat(), total: 0 };
+    const getLaborTotals = (laborId: string) => {
+      const raw = laborMap.get(laborId) || {};
+      const t = emptyTotals();
       for (const cat of CATS) {
         for (const sta of STAS) {
           const n = raw[cat]?.[sta] || 0;
-          samples[cat][sta] += n;
-          samples[cat].total += n;
-          samples.total += n;
+          t[cat][sta] += n;
+          t[cat].total += n;
+          t.total += n;
         }
       }
+      return t;
+    };
+
+    const add = (
+      a: ReturnType<typeof emptyTotals>,
+      b: ReturnType<typeof emptyTotals>,
+    ) => {
+      for (const cat of CATS) {
+        for (const sta of STAS) a[cat][sta] += b[cat][sta];
+        a[cat].total += b[cat].total;
+      }
+      a.total += b.total;
+    };
+
+    return areas.map((area) => {
+      const areaTotals = emptyTotals();
+      const levels = area.levels.map((level) => {
+        const levelTotals = emptyTotals();
+        const labors = level.labors.map((labor) => {
+          const t = getLaborTotals(labor.id);
+          add(levelTotals, t);
+          return {
+            id: labor.id,
+            name: labor.name,
+            abbreviation: labor.abbreviation,
+            description: labor.description,
+            samples: t,
+          };
+        });
+        add(areaTotals, levelTotals);
+        return {
+          id: level.id,
+          name: level.name,
+          abbreviation: level.abbreviation,
+          elevation: level.elevation,
+          description: level.description,
+          samples: levelTotals,
+          labors,
+        };
+      });
       return {
         id: area.id,
         name: area.name,
         abbreviation: area.abbreviation,
         description: area.description,
-        samples,
+        samples: areaTotals,
+        levels,
       };
     });
   },

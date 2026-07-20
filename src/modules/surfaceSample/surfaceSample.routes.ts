@@ -6,7 +6,9 @@ import {
   createSurfaceAreaSchema,
   createSurfaceDispatchSchema,
   createSurfaceLabAssignmentSchema,
+  createSurfaceLaborSchema,
   createSurfaceLaboratorySchema,
+  createSurfaceLevelSchema,
   createSurfaceObjectiveSchema,
   createSurfaceSampleResultSchema,
   createSurfaceSampleSchema,
@@ -15,14 +17,18 @@ import {
   surfaceAreaQuerySchema,
   surfaceDispatchQuerySchema,
   surfaceLabAssignmentQuerySchema,
+  surfaceLaborQuerySchema,
   surfaceLaboratoryQuerySchema,
+  surfaceLevelQuerySchema,
   surfaceObjectiveQuerySchema,
   surfaceSampleQuerySchema,
   surfaceSampleResultQuerySchema,
   updateSurfaceAreaSchema,
   updateSurfaceDispatchSchema,
   updateSurfaceLabAssignmentSchema,
+  updateSurfaceLaborSchema,
   updateSurfaceLaboratorySchema,
+  updateSurfaceLevelSchema,
   updateSurfaceObjectiveSchema,
   updateSurfaceSampleResultSchema,
   updateSurfaceSampleSchema,
@@ -54,6 +60,20 @@ router.get("/areas/:id", vp(idSchema), surfaceSampleController.getSurfaceAreaByI
 router.post("/areas", validate(createSurfaceAreaSchema), surfaceSampleController.createSurfaceArea);
 router.patch("/areas/:id", vp(idSchema), validate(updateSurfaceAreaSchema), surfaceSampleController.updateSurfaceArea);
 router.delete("/areas/:id", vp(idSchema), surfaceSampleController.deleteSurfaceArea);
+
+// ─── SurfaceLevel ─────────────────────────────────────────────────────────────
+router.get("/levels", vq(surfaceLevelQuerySchema), surfaceSampleController.getSurfaceLevels);
+router.get("/levels/:id", vp(idSchema), surfaceSampleController.getSurfaceLevelById);
+router.post("/levels", validate(createSurfaceLevelSchema), surfaceSampleController.createSurfaceLevel);
+router.patch("/levels/:id", vp(idSchema), validate(updateSurfaceLevelSchema), surfaceSampleController.updateSurfaceLevel);
+router.delete("/levels/:id", vp(idSchema), surfaceSampleController.deleteSurfaceLevel);
+
+// ─── SurfaceLabor ─────────────────────────────────────────────────────────────
+router.get("/labors", vq(surfaceLaborQuerySchema), surfaceSampleController.getSurfaceLabors);
+router.get("/labors/:id", vp(idSchema), surfaceSampleController.getSurfaceLaborById);
+router.post("/labors", validate(createSurfaceLaborSchema), surfaceSampleController.createSurfaceLabor);
+router.patch("/labors/:id", vp(idSchema), validate(updateSurfaceLaborSchema), surfaceSampleController.updateSurfaceLabor);
+router.delete("/labors/:id", vp(idSchema), surfaceSampleController.deleteSurfaceLabor);
 
 // ─── SurfaceObjective ─────────────────────────────────────────────────────────
 router.get("/objectives", vq(surfaceObjectiveQuerySchema), surfaceSampleController.getSurfaceObjectives);

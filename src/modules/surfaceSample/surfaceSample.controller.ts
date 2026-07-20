@@ -39,6 +39,50 @@ export const surfaceSampleController = {
     catch (e) { fail(res, e); }
   },
 
+  // ─── SurfaceLevel ─────────────────────────────────────────────────────────
+  async getSurfaceLevels(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceLevels(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async getSurfaceLevelById(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceLevelById(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+  async createSurfaceLevel(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.createSurfaceLevel(req.body, uid(req)), 201); }
+    catch (e) { fail(res, e); }
+  },
+  async updateSurfaceLevel(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.updateSurfaceLevel(vp(req).id, req.body, uid(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async deleteSurfaceLevel(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.deleteSurfaceLevel(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+
+  // ─── SurfaceLabor ─────────────────────────────────────────────────────────
+  async getSurfaceLabors(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceLabors(vq(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async getSurfaceLaborById(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.getSurfaceLaborById(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+  async createSurfaceLabor(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.createSurfaceLabor(req.body, uid(req)), 201); }
+    catch (e) { fail(res, e); }
+  },
+  async updateSurfaceLabor(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.updateSurfaceLabor(vp(req).id, req.body, uid(req))); }
+    catch (e) { fail(res, e); }
+  },
+  async deleteSurfaceLabor(req: AuthRequest, res: Response) {
+    try { ok(res, await surfaceSampleService.deleteSurfaceLabor(vp(req).id)); }
+    catch (e) { fail(res, e); }
+  },
+
   // ─── SurfaceObjective ─────────────────────────────────────────────────────
   async getSurfaceObjectives(req: AuthRequest, res: Response) {
     try { ok(res, await surfaceSampleService.getSurfaceObjectives(vq(req))); }

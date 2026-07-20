@@ -3,7 +3,9 @@ import {
   createSurfaceAreaSchema,
   createSurfaceDispatchSchema,
   createSurfaceLabAssignmentSchema,
+  createSurfaceLaborSchema,
   createSurfaceLaboratorySchema,
+  createSurfaceLevelSchema,
   createSurfaceObjectiveSchema,
   createSurfaceSampleResultSchema,
   createSurfaceSampleSchema,
@@ -11,14 +13,18 @@ import {
   surfaceAreaQuerySchema,
   surfaceDispatchQuerySchema,
   surfaceLabAssignmentQuerySchema,
+  surfaceLaborQuerySchema,
   surfaceLaboratoryQuerySchema,
+  surfaceLevelQuerySchema,
   surfaceObjectiveQuerySchema,
   surfaceSampleQuerySchema,
   surfaceSampleResultQuerySchema,
   updateSurfaceAreaSchema,
   updateSurfaceDispatchSchema,
   updateSurfaceLabAssignmentSchema,
+  updateSurfaceLaborSchema,
   updateSurfaceLaboratorySchema,
+  updateSurfaceLevelSchema,
   updateSurfaceObjectiveSchema,
   updateSurfaceSampleResultSchema,
   updateSurfaceSampleSchema,
@@ -28,6 +34,14 @@ import {
 export type SurfaceAreaQuery = z.infer<typeof surfaceAreaQuerySchema>;
 export type CreateSurfaceAreaDTO = z.infer<typeof createSurfaceAreaSchema>;
 export type UpdateSurfaceAreaDTO = z.infer<typeof updateSurfaceAreaSchema>;
+
+export type SurfaceLevelQuery = z.infer<typeof surfaceLevelQuerySchema>;
+export type CreateSurfaceLevelDTO = z.infer<typeof createSurfaceLevelSchema>;
+export type UpdateSurfaceLevelDTO = z.infer<typeof updateSurfaceLevelSchema>;
+
+export type SurfaceLaborQuery = z.infer<typeof surfaceLaborQuerySchema>;
+export type CreateSurfaceLaborDTO = z.infer<typeof createSurfaceLaborSchema>;
+export type UpdateSurfaceLaborDTO = z.infer<typeof updateSurfaceLaborSchema>;
 
 export type SurfaceObjectiveQuery = z.infer<typeof surfaceObjectiveQuerySchema>;
 export type CreateSurfaceObjectiveDTO = z.infer<typeof createSurfaceObjectiveSchema>;

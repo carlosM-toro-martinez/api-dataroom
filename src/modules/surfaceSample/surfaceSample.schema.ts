@@ -27,6 +27,50 @@ export const updateSurfaceAreaSchema = z.object({
   description: z.string().optional(),
 }).strict();
 
+// ─── SurfaceLevel ─────────────────────────────────────────────────────────────
+export const surfaceLevelQuerySchema = pagination.extend({
+  surfaceAreaId: z.string().uuid().optional(),
+  search: z.string().optional(),
+});
+
+export const createSurfaceLevelSchema = z.object({
+  surfaceAreaId: z.string().uuid(),
+  name: z.string().min(1),
+  abbreviation: z.string().min(1),
+  codeStart: z.number().int().positive().optional(),
+  elevation: z.number().optional(),
+  description: z.string().optional(),
+}).strict();
+
+export const updateSurfaceLevelSchema = z.object({
+  surfaceAreaId: z.string().uuid().optional(),
+  name: z.string().min(1).optional(),
+  abbreviation: z.string().min(1).optional(),
+  codeStart: z.number().int().positive().optional(),
+  elevation: z.number().optional(),
+  description: z.string().optional(),
+}).strict();
+
+// ─── SurfaceLabor ─────────────────────────────────────────────────────────────
+export const surfaceLaborQuerySchema = pagination.extend({
+  surfaceLevelId: z.string().uuid().optional(),
+  search: z.string().optional(),
+});
+
+export const createSurfaceLaborSchema = z.object({
+  surfaceLevelId: z.string().uuid(),
+  name: z.string().min(1),
+  abbreviation: z.string().min(1),
+  description: z.string().optional(),
+}).strict();
+
+export const updateSurfaceLaborSchema = z.object({
+  surfaceLevelId: z.string().uuid().optional(),
+  name: z.string().min(1).optional(),
+  abbreviation: z.string().min(1).optional(),
+  description: z.string().optional(),
+}).strict();
+
 // ─── SurfaceObjective ─────────────────────────────────────────────────────────
 export const surfaceObjectiveQuerySchema = pagination.extend({
   search: z.string().optional(),
@@ -76,7 +120,7 @@ export const updateSurfaceLabAssignmentSchema = z.object({
 
 // ─── SurfaceSample ────────────────────────────────────────────────────────────
 export const surfaceSampleQuerySchema = pagination.extend({
-  surfaceAreaId: z.string().uuid().optional(),
+  surfaceLaborId: z.string().uuid().optional(),
   surfaceObjectiveId: z.string().uuid().optional(),
   createdById: z.coerce.number().int().positive().optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
@@ -86,7 +130,7 @@ export const surfaceSampleQuerySchema = pagination.extend({
 });
 
 export const createSurfaceSampleSchema = z.object({
-  surfaceAreaId: z.string().uuid(),
+  surfaceLaborId: z.string().uuid(),
   surfaceObjectiveId: z.string().uuid(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
@@ -156,7 +200,7 @@ const labAssignmentEntrySchema = z.object({
 );
 
 export const createSurfaceSampleWithResultsSchema = z.object({
-  surfaceAreaId: z.string().uuid(),
+  surfaceLaborId: z.string().uuid(),
   surfaceObjectiveId: z.string().uuid(),
   name: z.string().min(1).optional(),
   priority: z.enum(SAMPLE_PRIORITIES).optional(),
