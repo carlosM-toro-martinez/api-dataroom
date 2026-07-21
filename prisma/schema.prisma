@@ -518,13 +518,17 @@ model SampleQAQC {
 model InteriorArea {
   id           String          @id @default(uuid())
   name         String
-  abbreviation String          @unique
+  abbreviation String
+  category     SampleCategory  @default(EXPLORATION)
   description  String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   createdById  Int?
   updatedById  Int?
   levels       InteriorLevel[]
+
+  @@unique([abbreviation, category])
+  @@index([category])
 }
 
 model InteriorLevel {
@@ -723,13 +727,17 @@ model InteriorDispatchElement {
 model SurfaceArea {
   id           String         @id @default(uuid())
   name         String
-  abbreviation String         @unique
+  abbreviation String
+  category     SampleCategory @default(EXPLORATION)
   description  String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   createdById  Int?
   updatedById  Int?
   levels       SurfaceLevel[]
+
+  @@unique([abbreviation, category])
+  @@index([category])
 }
 
 model SurfaceLevel {

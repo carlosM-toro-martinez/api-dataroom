@@ -235,7 +235,10 @@ export const surfaceSampleController = {
 
   // ─── Hierarchy ────────────────────────────────────────────────────────────
   async getSurfaceHierarchy(req: AuthRequest, res: Response) {
-    try { ok(res, await surfaceSampleService.getSurfaceHierarchy()); }
+    try {
+      const cat = req.query.category as "EXPLORATION" | "PRODUCTION" | undefined;
+      ok(res, await surfaceSampleService.getSurfaceHierarchy(cat));
+    }
     catch (e) { fail(res, e); }
   },
 };

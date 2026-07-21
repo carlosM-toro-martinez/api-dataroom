@@ -113,6 +113,7 @@ export const surfaceSampleService = {
   async getSurfaceAreas(query: SurfaceAreaQuery) {
     const { p, l, skip } = pg(query);
     const where: any = {};
+    if (query.category) where.category = query.category;
     if (query.search)
       where.OR = [
         { name: { contains: query.search, mode: "insensitive" as const } },
@@ -145,8 +146,10 @@ export const surfaceSampleService = {
   },
 
   async createSurfaceArea(data: CreateSurfaceAreaDTO, userId?: number) {
-    const existing = await prisma.surfaceArea.findUnique({ where: { abbreviation: data.abbreviation } });
-    if (existing) throw new HttpError(`Area abbreviation '${data.abbreviation}' already exists`, 409);
+    const existing = await prisma.surfaceArea.findUnique({
+      where: { abbreviation_category: { abbreviation: data.abbreviation, category: data.category } },
+    });
+    if (existing) throw new HttpError(`Area abbreviation '${data.abbreviation}' already exists for category ${data.category}`, 409);
     const area = await prisma.surfaceArea.create({
       data: { ...data, createdById: userId, updatedById: userId } as any,
     });
@@ -155,11 +158,15 @@ export const surfaceSampleService = {
   },
 
   async updateSurfaceArea(id: string, data: UpdateSurfaceAreaDTO, userId?: number) {
-    await this.getSurfaceAreaById(id);
-    if (data.abbreviation) {
-      const existing = await prisma.surfaceArea.findUnique({ where: { abbreviation: data.abbreviation } });
+    const current = await this.getSurfaceAreaById(id);
+    if (data.abbreviation || data.category) {
+      const abbr = data.abbreviation ?? current.abbreviation;
+      const cat = data.category ?? current.category;
+      const existing = await prisma.surfaceArea.findUnique({
+        where: { abbreviation_category: { abbreviation: abbr, category: cat } },
+      });
       if (existing && existing.id !== id)
-        throw new HttpError(`Area abbreviation '${data.abbreviation}' already exists`, 409);
+        throw new HttpError(`Area abbreviation '${abbr}' already exists for category ${cat}`, 409);
     }
     const updated = await prisma.surfaceArea.update({
       where: { id },
@@ -179,6 +186,7 @@ export const surfaceSampleService = {
     const { p, l, skip } = pg(query);
     const where: any = {};
     if (query.surfaceAreaId) where.surfaceAreaId = query.surfaceAreaId;
+    if (query.category) where.area = { category: query.category };
     if (query.search)
       where.OR = [
         { name: { contains: query.search, mode: "insensitive" as const } },
@@ -190,7 +198,7 @@ export const surfaceSampleService = {
         skip,
         take: l,
         orderBy: { name: "asc" },
-        include: { area: { select: { id: true, name: true, abbreviation: true } } },
+        include: { area: { select: { id: true, name: true, abbreviation: true, category: true } } },
       }),
       prisma.surfaceLevel.count({ where }),
     ]);
@@ -201,7 +209,7 @@ export const surfaceSampleService = {
     const level = await prisma.surfaceLevel.findUnique({
       where: { id },
       include: {
-        area: { select: { id: true, name: true, abbreviation: true } },
+        area: { select: { id: true, name: true, abbreviation: true, category: true } },
         labors: { select: { id: true, name: true, abbreviation: true } },
       },
     });
@@ -255,6 +263,7 @@ export const surfaceSampleService = {
     const { p, l, skip } = pg(query);
     const where: any = {};
     if (query.surfaceLevelId) where.surfaceLevelId = query.surfaceLevelId;
+    if (query.category) where.level = { area: { category: query.category } };
     if (query.search)
       where.OR = [
         { name: { contains: query.search, mode: "insensitive" as const } },
@@ -1008,7 +1017,7 @@ export const surfaceSampleService = {
   },
 
   // ─── Hierarchy ────────────────────────────────────────────────────────────
-  async getSurfaceHierarchy() {
+  async getSurfaceHierarchy(category?: "EXPLORATION" | "PRODUCTION") {
     const CATS = ["exploration", "production"] as const;
     const STAS = ["registered", "dispatched", "completed"] as const;
     const emptyCat = () => ({ registered: 0, dispatched: 0, completed: 0, total: 0 });
@@ -1016,6 +1025,7 @@ export const surfaceSampleService = {
 
     const [areas, counts] = await Promise.all([
       prisma.surfaceArea.findMany({
+        ...(category ? { where: { category } } : {}),
         orderBy: { name: "asc" },
         include: {
           levels: {
@@ -1097,6 +1107,7 @@ export const surfaceSampleService = {
         id: area.id,
         name: area.name,
         abbreviation: area.abbreviation,
+        category: area.category,
         description: area.description,
         samples: areaTotals,
         levels,

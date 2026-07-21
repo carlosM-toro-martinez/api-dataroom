@@ -13,24 +13,28 @@ const DISPATCH_STATUSES = ["PENDING", "COMPLETED"] as const;
 
 // ─── InteriorArea ─────────────────────────────────────────────────────────────
 export const interiorAreaQuerySchema = pagination.extend({
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   search: z.string().optional(),
 });
 
 export const createInteriorAreaSchema = z.object({
   name: z.string().min(1),
   abbreviation: z.string().min(1),
+  category: z.enum(SAMPLE_CATEGORIES),
   description: z.string().optional(),
 }).strict();
 
 export const updateInteriorAreaSchema = z.object({
   name: z.string().min(1).optional(),
   abbreviation: z.string().min(1).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   description: z.string().optional(),
 }).strict();
 
 // ─── InteriorLevel ────────────────────────────────────────────────────────────
 export const interiorLevelQuerySchema = pagination.extend({
   interiorAreaId: z.string().uuid().optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   search: z.string().optional(),
 });
 
@@ -55,6 +59,7 @@ export const updateInteriorLevelSchema = z.object({
 // ─── InteriorLabor ────────────────────────────────────────────────────────────
 export const interiorLaborQuerySchema = pagination.extend({
   interiorLevelId: z.string().uuid().optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   search: z.string().optional(),
 });
 

@@ -114,6 +114,7 @@ export const interiorSampleService = {
   async getInteriorAreas(query: InteriorAreaQuery) {
     const { p, l, skip } = pg(query);
     const where: any = {};
+    if (query.category) where.category = query.category;
     if (query.search)
       where.OR = [
         { name: { contains: query.search, mode: "insensitive" as const } },
@@ -146,8 +147,10 @@ export const interiorSampleService = {
   },
 
   async createInteriorArea(data: CreateInteriorAreaDTO, userId?: number) {
-    const existing = await prisma.interiorArea.findUnique({ where: { abbreviation: data.abbreviation } });
-    if (existing) throw new HttpError(`Area abbreviation '${data.abbreviation}' already exists`, 409);
+    const existing = await prisma.interiorArea.findUnique({
+      where: { abbreviation_category: { abbreviation: data.abbreviation, category: data.category } },
+    });
+    if (existing) throw new HttpError(`Area abbreviation '${data.abbreviation}' already exists for category ${data.category}`, 409);
     const area = await prisma.interiorArea.create({
       data: { ...data, createdById: userId, updatedById: userId } as any,
     });
@@ -156,11 +159,15 @@ export const interiorSampleService = {
   },
 
   async updateInteriorArea(id: string, data: UpdateInteriorAreaDTO, userId?: number) {
-    await this.getInteriorAreaById(id);
-    if (data.abbreviation) {
-      const existing = await prisma.interiorArea.findUnique({ where: { abbreviation: data.abbreviation } });
+    const current = await this.getInteriorAreaById(id);
+    if (data.abbreviation || data.category) {
+      const abbr = data.abbreviation ?? current.abbreviation;
+      const cat = data.category ?? current.category;
+      const existing = await prisma.interiorArea.findUnique({
+        where: { abbreviation_category: { abbreviation: abbr, category: cat } },
+      });
       if (existing && existing.id !== id)
-        throw new HttpError(`Area abbreviation '${data.abbreviation}' already exists`, 409);
+        throw new HttpError(`Area abbreviation '${abbr}' already exists for category ${cat}`, 409);
     }
     const updated = await prisma.interiorArea.update({
       where: { id },
@@ -180,6 +187,7 @@ export const interiorSampleService = {
     const { p, l, skip } = pg(query);
     const where: any = {};
     if (query.interiorAreaId) where.interiorAreaId = query.interiorAreaId;
+    if (query.category) where.area = { category: query.category };
     if (query.search)
       where.OR = [
         { name: { contains: query.search, mode: "insensitive" as const } },
@@ -191,7 +199,7 @@ export const interiorSampleService = {
         skip,
         take: l,
         orderBy: { name: "asc" },
-        include: { area: { select: { id: true, name: true, abbreviation: true } } },
+        include: { area: { select: { id: true, name: true, abbreviation: true, category: true } } },
       }),
       prisma.interiorLevel.count({ where }),
     ]);
@@ -256,6 +264,7 @@ export const interiorSampleService = {
     const { p, l, skip } = pg(query);
     const where: any = {};
     if (query.interiorLevelId) where.interiorLevelId = query.interiorLevelId;
+    if (query.category) where.level = { area: { category: query.category } };
     if (query.search)
       where.OR = [
         { name: { contains: query.search, mode: "insensitive" as const } },
@@ -1016,7 +1025,7 @@ export const interiorSampleService = {
   },
 
   // ─── Hierarchy ────────────────────────────────────────────────────────────
-  async getInteriorHierarchy() {
+  async getInteriorHierarchy(category?: "EXPLORATION" | "PRODUCTION") {
     const CATS = ["exploration", "production"] as const;
     const STAS = ["registered", "dispatched", "completed"] as const;
     const emptyCat = () => ({ registered: 0, dispatched: 0, completed: 0, total: 0 });
@@ -1024,6 +1033,7 @@ export const interiorSampleService = {
 
     const [areas, counts] = await Promise.all([
       prisma.interiorArea.findMany({
+        ...(category ? { where: { category } } : {}),
         orderBy: { name: "asc" },
         include: {
           levels: {
@@ -1105,6 +1115,7 @@ export const interiorSampleService = {
         id: area.id,
         name: area.name,
         abbreviation: area.abbreviation,
+        category: area.category,
         description: area.description,
         samples: areaTotals,
         levels,

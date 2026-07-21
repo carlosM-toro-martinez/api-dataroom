@@ -12,24 +12,28 @@ const DISPATCH_STATUSES = ["PENDING", "COMPLETED"] as const;
 
 // ─── SurfaceArea ──────────────────────────────────────────────────────────────
 export const surfaceAreaQuerySchema = pagination.extend({
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   search: z.string().optional(),
 });
 
 export const createSurfaceAreaSchema = z.object({
   name: z.string().min(1),
   abbreviation: z.string().min(1),
+  category: z.enum(SAMPLE_CATEGORIES),
   description: z.string().optional(),
 }).strict();
 
 export const updateSurfaceAreaSchema = z.object({
   name: z.string().min(1).optional(),
   abbreviation: z.string().min(1).optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   description: z.string().optional(),
 }).strict();
 
 // ─── SurfaceLevel ─────────────────────────────────────────────────────────────
 export const surfaceLevelQuerySchema = pagination.extend({
   surfaceAreaId: z.string().uuid().optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   search: z.string().optional(),
 });
 
@@ -54,6 +58,7 @@ export const updateSurfaceLevelSchema = z.object({
 // ─── SurfaceLabor ─────────────────────────────────────────────────────────────
 export const surfaceLaborQuerySchema = pagination.extend({
   surfaceLevelId: z.string().uuid().optional(),
+  category: z.enum(SAMPLE_CATEGORIES).optional(),
   search: z.string().optional(),
 });
 

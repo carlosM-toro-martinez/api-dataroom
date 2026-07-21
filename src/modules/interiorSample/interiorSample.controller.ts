@@ -234,7 +234,10 @@ export const interiorSampleController = {
 
   // ─── Hierarchy ────────────────────────────────────────────────────────────
   async getInteriorHierarchy(req: AuthRequest, res: Response) {
-    try { ok(res, await interiorSampleService.getInteriorHierarchy()); }
+    try {
+      const cat = req.query.category as "EXPLORATION" | "PRODUCTION" | undefined;
+      ok(res, await interiorSampleService.getInteriorHierarchy(cat));
+    }
     catch (e) { fail(res, e); }
   },
 };
