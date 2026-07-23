@@ -68,7 +68,7 @@ const DISPATCH_INCLUDE = {
     include: {
       sample: {
         select: {
-          id: true, code: true, name: true, status: true, category: true,
+          id: true, code: true, name: true, status: true, category: true, priority: true,
           labor: {
             select: {
               id: true, name: true, abbreviation: true,
