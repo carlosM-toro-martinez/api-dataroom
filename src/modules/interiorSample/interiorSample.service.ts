@@ -66,7 +66,22 @@ const DISPATCH_INCLUDE = {
   createdBy: { select: { id: true, nombre: true } },
   items: {
     include: {
-      sample: { select: { id: true, code: true, name: true, status: true, category: true } },
+      sample: {
+        select: {
+          id: true, code: true, name: true, status: true, category: true,
+          labor: {
+            select: {
+              id: true, name: true, abbreviation: true,
+              level: {
+                select: {
+                  id: true, name: true, abbreviation: true,
+                  area: { select: { id: true, name: true, abbreviation: true } },
+                },
+              },
+            },
+          },
+        },
+      },
       requestedElements: {
         include: { element: { select: { id: true, name: true, symbol: true, defaultUnit: true } } },
       },
