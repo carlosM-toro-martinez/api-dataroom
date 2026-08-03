@@ -28,20 +28,20 @@ router.post(
 router.get(
   "/data-room/access-requests",
   authenticate,
-  authorize("ADMIN", "GEOLOGOADMIN"),
+  authorize("ADMIN"),
   authController.listarSolicitudesDataRoom,
 );
 router.post(
   "/data-room/access-requests/:id/approve",
   authenticate,
-  authorize("ADMIN", "GEOLOGOADMIN"),
+  authorize("ADMIN"),
   validate(approveDataRoomAccessRequestSchema),
   authController.aprobarSolicitudDataRoom,
 );
 router.post(
   "/data-room/access-requests/:id/reject",
   authenticate,
-  authorize("ADMIN", "GEOLOGOADMIN"),
+  authorize("ADMIN"),
   validate(rejectDataRoomAccessRequestSchema),
   authController.rechazarSolicitudDataRoom,
 );
@@ -49,13 +49,13 @@ router.post(
 router.get(
   "/users",
   authenticate,
-  authorize("ADMIN", "GEOLOGOADMIN"),
+  authorize("ADMIN"),
   authController.listarUsuarios,
 );
 router.put(
   "/users/:id",
   authenticate,
-  authorize("ADMIN", "GEOLOGOADMIN"),
+  authorize("ADMIN"),
   validate(updateUserSchema),
   authController.actualizarUsuario,
 );
