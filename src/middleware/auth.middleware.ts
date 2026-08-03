@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import { prisma } from "../config/prisma.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
 
@@ -7,7 +9,11 @@ export interface AuthRequest extends Request {
   user?: { id: number; role: string };
 }
 
-export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
+function hashDeviceId(deviceId: string) {
+  return crypto.createHash("sha256").update(deviceId).digest("hex");
+}
+
+export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
     return res.status(401).json({ success: false, error: "Token requerido" });
@@ -15,6 +21,23 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: number; role: string };
+    if (decoded.role === "VISITANTE") {
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: {
+          activo: true,
+          visitorAccessExpiresAt: true,
+          visitorDeviceIdHash: true,
+        },
+      });
+      const deviceId = req.header("x-device-id");
+      if (!user?.activo || !user.visitorAccessExpiresAt || user.visitorAccessExpiresAt <= new Date()) {
+        return res.status(403).json({ success: false, error: "Acceso visitante expirado o inactivo" });
+      }
+      if (!deviceId || !user.visitorDeviceIdHash || user.visitorDeviceIdHash !== hashDeviceId(deviceId)) {
+        return res.status(403).json({ success: false, error: "Acceso visitante no autorizado para este dispositivo" });
+      }
+    }
     req.user = decoded;
     next();
   } catch {

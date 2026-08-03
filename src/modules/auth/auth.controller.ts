@@ -75,13 +75,61 @@ export const authController = {
     }
   },
 
+  async solicitarAccesoDataRoom(req: AuthRequest, res: Response) {
+    try {
+      const request = await authService.requestDataRoomAccess(req.body);
+      res.status(201).json({ success: true, data: request });
+    } catch (error) {
+      const status = (error as any).statusCode || 400;
+      res.status(status).json({ success: false, message: (error as Error).message });
+    }
+  },
+
+  async listarSolicitudesDataRoom(_req: AuthRequest, res: Response) {
+    try {
+      const requests = await authService.getDataRoomAccessRequests();
+      res.json({ success: true, data: requests });
+    } catch (error) {
+      const status = (error as any).statusCode || 500;
+      res.status(status).json({ success: false, message: (error as Error).message });
+    }
+  },
+
+  async aprobarSolicitudDataRoom(req: AuthRequest, res: Response) {
+    try {
+      const result = await authService.approveDataRoomAccessRequest(
+        req.params["id"] as string,
+        req.body,
+        req.user!.id,
+      );
+      res.json({ success: true, data: result });
+    } catch (error) {
+      const status = (error as any).statusCode || 400;
+      res.status(status).json({ success: false, message: (error as Error).message });
+    }
+  },
+
+  async rechazarSolicitudDataRoom(req: AuthRequest, res: Response) {
+    try {
+      const result = await authService.rejectDataRoomAccessRequest(
+        req.params["id"] as string,
+        req.body,
+        req.user!.id,
+      );
+      res.json({ success: true, data: result });
+    } catch (error) {
+      const status = (error as any).statusCode || 400;
+      res.status(status).json({ success: false, message: (error as Error).message });
+    }
+  },
+
   async refresh(req: AuthRequest, res: Response) {
     try {
       const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
       if (!refreshToken) {
         return res.status(400).json({ success: false, message: "Refresh token requerido" });
       }
-      const result = await authService.refresh(refreshToken);
+      const result = await authService.refresh(refreshToken, req.body.deviceId || req.header("x-device-id"));
       res.json({ success: true, data: result });
     } catch (error) {
       const status = (error as any).statusCode || 401;

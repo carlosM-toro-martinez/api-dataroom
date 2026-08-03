@@ -8,6 +8,9 @@ import {
   forgotPasswordSchema,
   resetPasswordBodySchema,
   changePasswordSchema,
+  approveDataRoomAccessRequestSchema,
+  dataRoomAccessRequestSchema,
+  rejectDataRoomAccessRequestSchema,
   updateUserSchema,
 } from "./auth.schema.js";
 
@@ -17,6 +20,31 @@ router.post("/register", validate(registerSchema), authController.register);
 router.post("/login", validate(loginSchema), authController.login);
 router.post("/refresh", authController.refresh);
 router.post("/logout", authenticate, authController.logout);
+router.post(
+  "/data-room/access-requests",
+  validate(dataRoomAccessRequestSchema),
+  authController.solicitarAccesoDataRoom,
+);
+router.get(
+  "/data-room/access-requests",
+  authenticate,
+  authorize("ADMIN", "GEOLOGOADMIN"),
+  authController.listarSolicitudesDataRoom,
+);
+router.post(
+  "/data-room/access-requests/:id/approve",
+  authenticate,
+  authorize("ADMIN", "GEOLOGOADMIN"),
+  validate(approveDataRoomAccessRequestSchema),
+  authController.aprobarSolicitudDataRoom,
+);
+router.post(
+  "/data-room/access-requests/:id/reject",
+  authenticate,
+  authorize("ADMIN", "GEOLOGOADMIN"),
+  validate(rejectDataRoomAccessRequestSchema),
+  authController.rechazarSolicitudDataRoom,
+);
 
 router.get(
   "/users",

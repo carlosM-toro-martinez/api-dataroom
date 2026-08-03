@@ -4,7 +4,16 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
-import type { LoginDTO, RegisterDTO, ForgotPasswordDTO, ChangePasswordDTO, UpdateUserDTO } from "./auth.types.js";
+import type {
+  ApproveDataRoomAccessRequestDTO,
+  ChangePasswordDTO,
+  DataRoomAccessRequestDTO,
+  ForgotPasswordDTO,
+  LoginDTO,
+  RegisterDTO,
+  RejectDataRoomAccessRequestDTO,
+  UpdateUserDTO,
+} from "./auth.types.js";
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
 
@@ -13,6 +22,7 @@ const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || "refresh_secret
 const ACCESS_TOKEN_EXPIRY = "8h";
 const REFRESH_TOKEN_EXPIRY = "7d";
 const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+const VISITOR_PASSWORD_BYTES = 9;
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -23,6 +33,36 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASS,
   },
 });
+
+function hashDeviceId(deviceId: string) {
+  return crypto.createHash("sha256").update(deviceId).digest("hex");
+}
+
+function buildTemporaryPassword() {
+  return crypto.randomBytes(VISITOR_PASSWORD_BYTES).toString("base64url");
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+async function sendVisitorAccessEmail(input: {
+  email: string;
+  name: string;
+  password: string;
+  expiresAt: Date;
+}) {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return false;
+
+  const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:5174"}/login`;
+  await transporter.sendMail({
+    from: process.env.SMTP_USER,
+    to: input.email,
+    subject: "Acceso al Data Room - Minera Marte",
+    html: `<p>Hola ${input.name},</p><p>Tu acceso de visitante al Data Room fue aprobado.</p><p><strong>Correo:</strong> ${input.email}<br/><strong>Contraseña temporal:</strong> ${input.password}</p><p>Ingresa en: <a href="${loginUrl}">${loginUrl}</a></p><p>Este acceso vence el ${input.expiresAt.toISOString()} y quedará vinculado al primer dispositivo donde inicies sesión.</p>`,
+  });
+  return true;
+}
 
 export const authService = {
   async register(data: RegisterDTO) {
@@ -53,7 +93,7 @@ export const authService = {
   },
 
   async login(data: LoginDTO) {
-    const user = await prisma.user.findUnique({ where: { email: data.email } });
+    const user = await prisma.user.findUnique({ where: { email: normalizeEmail(data.email) } });
 
     if (!user || !(await bcrypt.compare(data.password, user.password))) {
       logger.warn({ email: data.email }, "Intento de login fallido");
@@ -62,6 +102,30 @@ export const authService = {
 
     if (user.activo === false) {
       throw new HttpError("Usuario inactivo", 403);
+    }
+
+    if (user.role === "VISITANTE") {
+      if (!user.visitorAccessExpiresAt || user.visitorAccessExpiresAt <= new Date()) {
+        throw new HttpError("El acceso visitante expiró", 403);
+      }
+      if (!data.deviceId) {
+        throw new HttpError("Dispositivo requerido para acceso visitante", 400);
+      }
+      const deviceHash = hashDeviceId(data.deviceId);
+      if (user.visitorDeviceIdHash && user.visitorDeviceIdHash !== deviceHash) {
+        throw new HttpError("Este acceso visitante ya fue usado en otro dispositivo", 403);
+      }
+      if (!user.visitorDeviceIdHash) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { visitorDeviceIdHash: deviceHash, visitorLastLoginAt: new Date() },
+        });
+      } else {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { visitorLastLoginAt: new Date() },
+        });
+      }
     }
 
     const accessToken = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
@@ -84,14 +148,24 @@ export const authService = {
     return {
       accessToken,
       refreshToken,
-      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role },
+      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, activo: user.activo },
     };
   },
 
   async getAllUsers() {
     return prisma.user.findMany({
       orderBy: { createdAt: "desc" },
-      select: { id: true, nombre: true, email: true, role: true, activo: true, createdAt: true },
+      select: {
+        id: true,
+        nombre: true,
+        email: true,
+        role: true,
+        activo: true,
+        createdAt: true,
+        visitorAccessExpiresAt: true,
+        visitorLastLoginAt: true,
+        visitorDeviceIdHash: true,
+      },
     });
   },
 
@@ -101,6 +175,9 @@ export const authService = {
     if (data.email !== undefined) updateData["email"] = data.email.trim();
     if (data.role !== undefined) updateData["role"] = data.role;
     if (data.activo !== undefined) updateData["activo"] = data.activo;
+    if (data.visitorAccessExpiresAt !== undefined) {
+      updateData["visitorAccessExpiresAt"] = data.visitorAccessExpiresAt ? new Date(data.visitorAccessExpiresAt) : null;
+    }
 
     if (Object.keys(updateData).length === 0) {
       throw new HttpError("No hay datos para actualizar", 400);
@@ -109,7 +186,120 @@ export const authService = {
     return prisma.user.update({
       where: { id },
       data: updateData,
-      select: { id: true, nombre: true, email: true, role: true, activo: true, createdAt: true },
+      select: {
+        id: true,
+        nombre: true,
+        email: true,
+        role: true,
+        activo: true,
+        createdAt: true,
+        visitorAccessExpiresAt: true,
+        visitorLastLoginAt: true,
+        visitorDeviceIdHash: true,
+      },
+    });
+  },
+
+  async requestDataRoomAccess(data: DataRoomAccessRequestDTO) {
+    const request = await prisma.dataRoomAccessRequest.create({
+      data: {
+        fullName: data.fullName.trim(),
+        email: normalizeEmail(data.email),
+        phone: data.phone.trim(),
+        company: data.company?.trim() || null,
+        reason: data.reason.trim(),
+      },
+    });
+
+    logger.info({ requestId: request.id, email: request.email }, "Solicitud de acceso Data Room creada");
+    return request;
+  },
+
+  async getDataRoomAccessRequests() {
+    return prisma.dataRoomAccessRequest.findMany({
+      orderBy: { requestedAt: "desc" },
+      include: {
+        reviewedBy: { select: { id: true, nombre: true, email: true } },
+      },
+    });
+  },
+
+  async approveDataRoomAccessRequest(id: string, data: ApproveDataRoomAccessRequestDTO, reviewerId: number) {
+    const request = await prisma.dataRoomAccessRequest.findUnique({ where: { id } });
+    if (!request) throw new HttpError("Solicitud no encontrada", 404);
+    if (request.status !== "PENDING") throw new HttpError("La solicitud ya fue revisada", 409);
+
+    const expiresAt = new Date(data.expiresAt);
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date()) {
+      throw new HttpError("La fecha de expiración debe ser futura", 400);
+    }
+
+    const password = buildTemporaryPassword();
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.upsert({
+      where: { email: request.email },
+      create: {
+        nombre: request.fullName,
+        email: request.email,
+        password: hashedPassword,
+        role: "VISITANTE",
+        activo: true,
+        visitorAccessExpiresAt: expiresAt,
+        visitorDeviceIdHash: null,
+        visitorLastLoginAt: null,
+        refreshToken: null,
+        refreshTokenExpiry: null,
+      },
+      update: {
+        nombre: request.fullName,
+        password: hashedPassword,
+        role: "VISITANTE",
+        activo: true,
+        visitorAccessExpiresAt: expiresAt,
+        visitorDeviceIdHash: null,
+        visitorLastLoginAt: null,
+        refreshToken: null,
+        refreshTokenExpiry: null,
+      },
+      select: { id: true, nombre: true, email: true, role: true, activo: true, visitorAccessExpiresAt: true },
+    });
+
+    const emailSent = await sendVisitorAccessEmail({
+      email: request.email,
+      name: request.fullName,
+      password,
+      expiresAt,
+    });
+
+    const updatedRequest = await prisma.dataRoomAccessRequest.update({
+      where: { id },
+      data: {
+        status: "APPROVED",
+        reviewedAt: new Date(),
+        reviewedById: reviewerId,
+        expiresAt,
+        visitorUserId: user.id,
+        adminNotes: data.adminNotes?.trim() || null,
+      },
+    });
+
+    return { request: updatedRequest, user, temporaryPassword: emailSent ? undefined : password, emailSent };
+  },
+
+  async rejectDataRoomAccessRequest(id: string, data: RejectDataRoomAccessRequestDTO, reviewerId: number) {
+    const request = await prisma.dataRoomAccessRequest.findUnique({ where: { id } });
+    if (!request) throw new HttpError("Solicitud no encontrada", 404);
+    if (request.status !== "PENDING") throw new HttpError("La solicitud ya fue revisada", 409);
+
+    return prisma.dataRoomAccessRequest.update({
+      where: { id },
+      data: {
+        status: "REJECTED",
+        reviewedAt: new Date(),
+        reviewedById: reviewerId,
+        rejectionReason: data.rejectionReason.trim(),
+      },
     });
   },
 
@@ -174,12 +364,22 @@ export const authService = {
     return { message: "Contraseña cambiada exitosamente" };
   },
 
-  async refresh(refreshToken: string) {
+  async refresh(refreshToken: string, deviceId?: string) {
     try {
       const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET) as { id: number };
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },
-        select: { id: true, role: true, nombre: true, email: true, refreshToken: true, refreshTokenExpiry: true },
+        select: {
+          id: true,
+          role: true,
+          nombre: true,
+          email: true,
+          activo: true,
+          refreshToken: true,
+          refreshTokenExpiry: true,
+          visitorAccessExpiresAt: true,
+          visitorDeviceIdHash: true,
+        },
       });
 
       if (!user || user.refreshToken !== refreshToken) {
@@ -187,6 +387,17 @@ export const authService = {
       }
       if (!user.refreshTokenExpiry || user.refreshTokenExpiry < new Date()) {
         throw new HttpError("Refresh token expirado", 401);
+      }
+      if (!user.activo) {
+        throw new HttpError("Usuario inactivo", 403);
+      }
+      if (user.role === "VISITANTE") {
+        if (!user.visitorAccessExpiresAt || user.visitorAccessExpiresAt <= new Date()) {
+          throw new HttpError("El acceso visitante expiró", 403);
+        }
+        if (!deviceId || !user.visitorDeviceIdHash || user.visitorDeviceIdHash !== hashDeviceId(deviceId)) {
+          throw new HttpError("Este acceso visitante pertenece a otro dispositivo", 403);
+        }
       }
 
       const newAccessToken = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
@@ -196,7 +407,7 @@ export const authService = {
       logger.info({ userId: user.id }, "Access token renovado");
       return {
         accessToken: newAccessToken,
-        user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role },
+        user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, activo: user.activo },
       };
     } catch (error) {
       if (error instanceof HttpError) throw error;

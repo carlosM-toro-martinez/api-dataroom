@@ -23,10 +23,36 @@ model User {
   resetTokenExpiry   DateTime?
   refreshToken       String?
   refreshTokenExpiry DateTime?
+  visitorAccessExpiresAt DateTime?
+  visitorDeviceIdHash    String?
+  visitorLastLoginAt     DateTime?
+  dataRoomRequestsReviewed DataRoomAccessRequest[] @relation("DataRoomAccessRequestReviewedBy")
   interiorSamples    InteriorSample[]         @relation("InteriorSampleCreatedBy")
   surfaceSamples     SurfaceSample[]          @relation("SurfaceSampleCreatedBy")
   interiorDispatches InteriorSampleDispatch[] @relation("InteriorDispatchCreatedBy")
   surfaceDispatches  SurfaceSampleDispatch[]  @relation("SurfaceDispatchCreatedBy")
+}
+
+model DataRoomAccessRequest {
+  id              String                  @id @default(uuid())
+  fullName        String
+  email           String
+  phone           String
+  company         String?
+  reason          String
+  status          DataRoomRequestStatus   @default(PENDING)
+  requestedAt     DateTime                @default(now())
+  reviewedAt      DateTime?
+  reviewedById    Int?
+  expiresAt       DateTime?
+  visitorUserId   Int?
+  adminNotes      String?
+  rejectionReason String?
+  reviewedBy      User?                   @relation("DataRoomAccessRequestReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@index([email])
+  @@index([requestedAt])
 }
 
 ////////////////////////////////
@@ -937,6 +963,12 @@ enum ExploRole {
   GEOLOGOADMIN
   GEOLOGO
   VISITANTE
+}
+
+enum DataRoomRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum DrillHoleType {
