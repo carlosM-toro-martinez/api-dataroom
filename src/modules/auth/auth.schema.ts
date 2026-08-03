@@ -52,3 +52,7 @@ export const approveDataRoomAccessRequestSchema = z.object({
 export const rejectDataRoomAccessRequestSchema = z.object({
   rejectionReason: z.string().min(3).max(1200),
 });
+
+export const cancelDataRoomAccessRequestSchema = z.object({
+  cancellationReason: z.string().min(3).max(1200),
+});

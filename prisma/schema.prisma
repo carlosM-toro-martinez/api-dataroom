@@ -969,6 +969,7 @@ enum DataRoomRequestStatus {
   PENDING
   APPROVED
   REJECTED
+  CANCELLED
 }
 
 enum DrillHoleType {

@@ -5,6 +5,7 @@ import type {
   forgotPasswordSchema,
   changePasswordSchema,
   approveDataRoomAccessRequestSchema,
+  cancelDataRoomAccessRequestSchema,
   dataRoomAccessRequestSchema,
   updateUserSchema,
   rejectDataRoomAccessRequestSchema,
@@ -18,3 +19,4 @@ export type UpdateUserDTO = z.infer<typeof updateUserSchema>;
 export type DataRoomAccessRequestDTO = z.infer<typeof dataRoomAccessRequestSchema>;
 export type ApproveDataRoomAccessRequestDTO = z.infer<typeof approveDataRoomAccessRequestSchema>;
 export type RejectDataRoomAccessRequestDTO = z.infer<typeof rejectDataRoomAccessRequestSchema>;
+export type CancelDataRoomAccessRequestDTO = z.infer<typeof cancelDataRoomAccessRequestSchema>;

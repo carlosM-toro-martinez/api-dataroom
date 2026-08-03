@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import type {
   ApproveDataRoomAccessRequestDTO,
+  CancelDataRoomAccessRequestDTO,
   ChangePasswordDTO,
   DataRoomAccessRequestDTO,
   ForgotPasswordDTO,
@@ -301,6 +302,41 @@ export const authService = {
         rejectionReason: data.rejectionReason.trim(),
       },
     });
+  },
+
+  async cancelDataRoomAccessRequest(id: string, data: CancelDataRoomAccessRequestDTO, reviewerId: number) {
+    const request = await prisma.dataRoomAccessRequest.findUnique({ where: { id } });
+    if (!request) throw new HttpError("Solicitud no encontrada", 404);
+    if (request.status !== "APPROVED") {
+      throw new HttpError("Solo se puede cancelar una solicitud aprobada", 409);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.dataRoomAccessRequest.update({
+        where: { id },
+        data: {
+          status: "CANCELLED",
+          reviewedAt: new Date(),
+          reviewedById: reviewerId,
+          rejectionReason: data.cancellationReason.trim(),
+        },
+      });
+
+      if (request.visitorUserId) {
+        await tx.user.update({
+          where: { id: request.visitorUserId },
+          data: {
+            activo: false,
+            refreshToken: null,
+            refreshTokenExpiry: null,
+            visitorAccessExpiresAt: new Date(),
+            visitorDeviceIdHash: null,
+          },
+        });
+      }
+    });
+
+    return prisma.dataRoomAccessRequest.findUnique({ where: { id } });
   },
 
   async forgotPassword(data: ForgotPasswordDTO) {

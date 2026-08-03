@@ -1,4 +1,4 @@
-CREATE TYPE "DataRoomRequestStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+CREATE TYPE "DataRoomRequestStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED');
 
 ALTER TABLE "User"
 ADD COLUMN "visitorAccessExpiresAt" TIMESTAMP(3),

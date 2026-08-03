@@ -9,6 +9,7 @@ import {
   resetPasswordBodySchema,
   changePasswordSchema,
   approveDataRoomAccessRequestSchema,
+  cancelDataRoomAccessRequestSchema,
   dataRoomAccessRequestSchema,
   rejectDataRoomAccessRequestSchema,
   updateUserSchema,
@@ -44,6 +45,13 @@ router.post(
   authorize("ADMIN"),
   validate(rejectDataRoomAccessRequestSchema),
   authController.rechazarSolicitudDataRoom,
+);
+router.post(
+  "/data-room/access-requests/:id/cancel",
+  authenticate,
+  authorize("ADMIN"),
+  validate(cancelDataRoomAccessRequestSchema),
+  authController.cancelarSolicitudDataRoom,
 );
 
 router.get(

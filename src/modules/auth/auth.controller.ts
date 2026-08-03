@@ -123,6 +123,20 @@ export const authController = {
     }
   },
 
+  async cancelarSolicitudDataRoom(req: AuthRequest, res: Response) {
+    try {
+      const result = await authService.cancelDataRoomAccessRequest(
+        req.params["id"] as string,
+        req.body,
+        req.user!.id,
+      );
+      res.json({ success: true, data: result });
+    } catch (error) {
+      const status = (error as any).statusCode || 400;
+      res.status(status).json({ success: false, message: (error as Error).message });
+    }
+  },
+
   async refresh(req: AuthRequest, res: Response) {
     try {
       const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
