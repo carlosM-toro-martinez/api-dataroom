@@ -46,6 +46,7 @@ model DataRoomAccessRequest {
   reviewedById    Int?
   expiresAt       DateTime?
   visitorUserId   Int?
+  visitorTemporaryPassword String?
   adminNotes      String?
   rejectionReason String?
   reviewedBy      User?                   @relation("DataRoomAccessRequestReviewedBy", fields: [reviewedById], references: [id])

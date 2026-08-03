@@ -281,11 +281,12 @@ export const authService = {
         reviewedById: reviewerId,
         expiresAt,
         visitorUserId: user.id,
+        visitorTemporaryPassword: password,
         adminNotes: data.adminNotes?.trim() || null,
       },
     });
 
-    return { request: updatedRequest, user, temporaryPassword: emailSent ? undefined : password, emailSent };
+    return { request: updatedRequest, user, temporaryPassword: password, emailSent };
   },
 
   async rejectDataRoomAccessRequest(id: string, data: RejectDataRoomAccessRequestDTO, reviewerId: number) {
@@ -319,6 +320,7 @@ export const authService = {
           reviewedAt: new Date(),
           reviewedById: reviewerId,
           rejectionReason: data.cancellationReason.trim(),
+          visitorTemporaryPassword: null,
         },
       });
 
