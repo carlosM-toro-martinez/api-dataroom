@@ -47,6 +47,10 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function userEmailWhere(email: string) {
+  return { email: { equals: normalizeEmail(email), mode: "insensitive" as const } };
+}
+
 async function sendVisitorAccessEmail(input: {
   email: string;
   name: string;
@@ -67,13 +71,17 @@ async function sendVisitorAccessEmail(input: {
 
 export const authService = {
   async register(data: RegisterDTO) {
+    const email = normalizeEmail(data.email);
+    const existing = await prisma.user.findFirst({ where: userEmailWhere(email), select: { id: true } });
+    if (existing) throw new HttpError("Email ya registrado", 409);
+
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
     try {
       const user = await prisma.user.create({
         data: {
           nombre: data.nombre,
-          email: data.email,
+          email,
           password: hashedPassword,
           role: data.role,
         },
@@ -94,10 +102,11 @@ export const authService = {
   },
 
   async login(data: LoginDTO) {
-    const user = await prisma.user.findUnique({ where: { email: normalizeEmail(data.email) } });
+    const email = normalizeEmail(data.email);
+    const user = await prisma.user.findFirst({ where: userEmailWhere(email) });
 
     if (!user || !(await bcrypt.compare(data.password, user.password))) {
-      logger.warn({ email: data.email }, "Intento de login fallido");
+      logger.warn({ email }, "Intento de login fallido");
       throw new HttpError("Credenciales inválidas", 401);
     }
 
@@ -173,7 +182,12 @@ export const authService = {
   async updateUser(id: number, data: UpdateUserDTO) {
     const updateData: Record<string, unknown> = {};
     if (data.nombre !== undefined) updateData["nombre"] = data.nombre.trim();
-    if (data.email !== undefined) updateData["email"] = data.email.trim();
+    if (data.email !== undefined) {
+      const email = normalizeEmail(data.email);
+      const existing = await prisma.user.findFirst({ where: userEmailWhere(email), select: { id: true } });
+      if (existing && existing.id !== id) throw new HttpError("Email ya registrado", 409);
+      updateData["email"] = email;
+    }
     if (data.role !== undefined) updateData["role"] = data.role;
     if (data.activo !== undefined) updateData["activo"] = data.activo;
     if (data.visitorAccessExpiresAt !== undefined) {
@@ -342,7 +356,7 @@ export const authService = {
   },
 
   async forgotPassword(data: ForgotPasswordDTO) {
-    const user = await prisma.user.findUnique({ where: { email: data.email } });
+    const user = await prisma.user.findFirst({ where: userEmailWhere(data.email) });
     if (!user) throw new HttpError("Usuario no encontrado", 404);
 
     const resetToken = crypto.randomBytes(32).toString("hex");

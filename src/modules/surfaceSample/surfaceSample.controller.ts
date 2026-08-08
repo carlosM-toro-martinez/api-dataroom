@@ -175,7 +175,7 @@ export const surfaceSampleController = {
     catch (e) { fail(res, e); }
   },
   async deleteSurfaceSample(req: AuthRequest, res: Response) {
-    try { ok(res, await surfaceSampleService.deleteSurfaceSample(vp(req).id)); }
+    try { ok(res, await surfaceSampleService.deleteSurfaceSample(vp(req).id, uid(req), req.user?.role)); }
     catch (e) { fail(res, e); }
   },
 

@@ -12,15 +12,18 @@ export async function seedAdmin() {
     return;
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await prisma.user.findFirst({
+    where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+  });
   if (existing) {
-    logger.info({ email }, "Usuario admin ya existe, omitiendo seed");
+    logger.info({ email: normalizedEmail }, "Usuario admin ya existe, omitiendo seed");
     return;
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
   const admin = await prisma.user.create({
-    data: { nombre, email, password: hashedPassword, role: "ADMIN" },
+    data: { nombre, email: normalizedEmail, password: hashedPassword, role: "ADMIN" },
     select: { id: true, nombre: true, email: true, role: true },
   });
 

@@ -40,6 +40,10 @@ const pg = (q: any) => {
 };
 
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
+const sampleCodeFor = (category: "EXPLORATION" | "PRODUCTION", sequentialNumber: number) => {
+  const prefix = category === "PRODUCTION" ? "M" : "EX";
+  return `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
+};
 
 const FULL_SAMPLE_INCLUDE = {
   labor: {
@@ -502,10 +506,9 @@ export const interiorSampleService = {
 
     return prisma.$transaction(async (tx) => {
       const category = data.category ?? "EXPLORATION";
-      const prefix = category === "PRODUCTION" ? "M" : "EX";
       const count = await tx.interiorSample.count({ where: { category } });
       const sequentialNumber = count + 1;
-      const code = `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
+      const code = sampleCodeFor(category, sequentialNumber);
       const sample = await tx.interiorSample.create({
         data: {
           ...data,
@@ -541,12 +544,58 @@ export const interiorSampleService = {
     return updated;
   },
 
-  async deleteInteriorSample(id: string) {
-    await this.getInteriorSampleById(id);
+  async deleteInteriorSample(id: string, userId?: number, userRole?: string) {
+    const sample = await prisma.interiorSample.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        category: true,
+        sequentialNumber: true,
+        createdById: true,
+      },
+    });
+    if (!sample) throw new HttpError("Interior sample not found", 404);
+    const canDelete = userRole === "ADMIN" || (userId !== undefined && sample.createdById === userId);
+    if (!canDelete) {
+      throw new HttpError("Solo ADMIN o la persona que registró la muestra puede eliminarla", 403);
+    }
+
+    const laterSamples = await prisma.interiorSample.findMany({
+      where: {
+        category: sample.category,
+        sequentialNumber: { gt: sample.sequentialNumber },
+      },
+      orderBy: { sequentialNumber: "asc" },
+      select: { id: true, sequentialNumber: true, category: true },
+    });
+
     return prisma.$transaction(async (tx) => {
       await tx.interiorSampleResult.deleteMany({ where: { interiorSampleId: id } });
       await tx.interiorLabAssignment.deleteMany({ where: { interiorSampleId: id } });
-      return tx.interiorSample.delete({ where: { id } });
+      const deleted = await tx.interiorSample.delete({ where: { id } });
+      const temporarySuffix = `${Date.now()}-${id.slice(0, 8)}`;
+
+      for (const item of laterSamples) {
+        await tx.interiorSample.update({
+          where: { id: item.id },
+          data: { code: `REN-${temporarySuffix}-${item.id.slice(0, 8)}` },
+        });
+      }
+
+      for (const item of laterSamples) {
+        const sequentialNumber = item.sequentialNumber - 1;
+        await tx.interiorSample.update({
+          where: { id: item.id },
+          data: {
+            sequentialNumber,
+            code: sampleCodeFor(item.category, sequentialNumber),
+            updatedById: userId,
+          } as any,
+        });
+      }
+
+      logger.info({ sampleId: id, category: sample.category, renumbered: laterSamples.length, userId }, "InteriorSample deleted and sequence compacted");
+      return deleted;
     });
   },
 
@@ -578,10 +627,9 @@ export const interiorSampleService = {
 
     return prisma.$transaction(async (tx) => {
       const category = sampleFields.category ?? "EXPLORATION";
-      const prefix = category === "PRODUCTION" ? "M" : "EX";
       const count = await tx.interiorSample.count({ where: { category } });
       const sequentialNumber = count + 1;
-      const code = `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
+      const code = sampleCodeFor(category, sequentialNumber);
 
       const sample = await tx.interiorSample.create({
         data: {

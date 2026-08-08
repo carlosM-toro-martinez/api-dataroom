@@ -40,6 +40,10 @@ const pg = (q: any) => {
 };
 
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
+const sampleCodeFor = (category: "EXPLORATION" | "PRODUCTION", sequentialNumber: number) => {
+  const prefix = category === "PRODUCTION" ? "M" : "EX";
+  return `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
+};
 
 const FULL_SAMPLE_INCLUDE = {
   labor: {
@@ -586,10 +590,9 @@ export const surfaceSampleService = {
 
     return prisma.$transaction(async (tx) => {
       const category = data.category ?? "EXPLORATION";
-      const prefix = category === "PRODUCTION" ? "M" : "EX";
       const count = await tx.surfaceSample.count({ where: { category } });
       const sequentialNumber = count + 1;
-      const code = `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
+      const code = sampleCodeFor(category, sequentialNumber);
       const sample = await tx.surfaceSample.create({
         data: {
           ...data,
@@ -625,12 +628,58 @@ export const surfaceSampleService = {
     return updated;
   },
 
-  async deleteSurfaceSample(id: string) {
-    await this.getSurfaceSampleById(id);
+  async deleteSurfaceSample(id: string, userId?: number, userRole?: string) {
+    const sample = await prisma.surfaceSample.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        category: true,
+        sequentialNumber: true,
+        createdById: true,
+      },
+    });
+    if (!sample) throw new HttpError("Surface sample not found", 404);
+    const canDelete = userRole === "ADMIN" || (userId !== undefined && sample.createdById === userId);
+    if (!canDelete) {
+      throw new HttpError("Solo ADMIN o la persona que registró la muestra puede eliminarla", 403);
+    }
+
+    const laterSamples = await prisma.surfaceSample.findMany({
+      where: {
+        category: sample.category,
+        sequentialNumber: { gt: sample.sequentialNumber },
+      },
+      orderBy: { sequentialNumber: "asc" },
+      select: { id: true, sequentialNumber: true, category: true },
+    });
+
     return prisma.$transaction(async (tx) => {
       await tx.surfaceSampleResult.deleteMany({ where: { surfaceSampleId: id } });
       await tx.surfaceLabAssignment.deleteMany({ where: { surfaceSampleId: id } });
-      return tx.surfaceSample.delete({ where: { id } });
+      const deleted = await tx.surfaceSample.delete({ where: { id } });
+      const temporarySuffix = `${Date.now()}-${id.slice(0, 8)}`;
+
+      for (const item of laterSamples) {
+        await tx.surfaceSample.update({
+          where: { id: item.id },
+          data: { code: `REN-${temporarySuffix}-${item.id.slice(0, 8)}` },
+        });
+      }
+
+      for (const item of laterSamples) {
+        const sequentialNumber = item.sequentialNumber - 1;
+        await tx.surfaceSample.update({
+          where: { id: item.id },
+          data: {
+            sequentialNumber,
+            code: sampleCodeFor(item.category, sequentialNumber),
+            updatedById: userId,
+          } as any,
+        });
+      }
+
+      logger.info({ sampleId: id, category: sample.category, renumbered: laterSamples.length, userId }, "SurfaceSample deleted and sequence compacted");
+      return deleted;
     });
   },
 
@@ -662,10 +711,9 @@ export const surfaceSampleService = {
 
     return prisma.$transaction(async (tx) => {
       const category = sampleFields.category ?? "EXPLORATION";
-      const prefix = category === "PRODUCTION" ? "M" : "EX";
       const count = await tx.surfaceSample.count({ where: { category } });
       const sequentialNumber = count + 1;
-      const code = `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
+      const code = sampleCodeFor(category, sequentialNumber);
 
       const sample = await tx.surfaceSample.create({
         data: {

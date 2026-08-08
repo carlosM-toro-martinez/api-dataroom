@@ -153,7 +153,7 @@ export const interiorSampleController = {
     catch (e) { fail(res, e); }
   },
   async deleteInteriorSample(req: AuthRequest, res: Response) {
-    try { ok(res, await interiorSampleService.deleteInteriorSample(vp(req).id)); }
+    try { ok(res, await interiorSampleService.deleteInteriorSample(vp(req).id, uid(req), req.user?.role)); }
     catch (e) { fail(res, e); }
   },
   // ─── InteriorSample with results (transaction) ────────────────────────────
