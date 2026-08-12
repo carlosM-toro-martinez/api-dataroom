@@ -41,7 +41,7 @@ export const dataRoomAccessRequestSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(5).max(60),
   company: z.string().max(160).optional().nullable(),
-  reason: z.string().min(8).max(1200),
+  reason: z.string().min(3).max(1200),
 });
 
 export const approveDataRoomAccessRequestSchema = z.object({
