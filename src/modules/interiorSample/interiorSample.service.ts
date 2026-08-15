@@ -1,6 +1,7 @@
 import { prisma } from "../../config/prisma.js";
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
+import { allocateGlobalSampleCode, compactGlobalSampleCodesAfterDelete } from "../sampleCodes/sampleCode.service.js";
 import type {
   CreateInteriorAreaDTO,
   CreateInteriorDispatchDTO,
@@ -40,11 +41,6 @@ const pg = (q: any) => {
 };
 
 const toDate = (s?: string | null) => (s ? new Date(s) : null);
-const sampleCodeFor = (category: "EXPLORATION" | "PRODUCTION", sequentialNumber: number) => {
-  const prefix = category === "PRODUCTION" ? "M" : "EX";
-  return `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
-};
-
 const FULL_SAMPLE_INCLUDE = {
   labor: {
     include: {
@@ -506,9 +502,7 @@ export const interiorSampleService = {
 
     return prisma.$transaction(async (tx) => {
       const category = data.category ?? "EXPLORATION";
-      const count = await tx.interiorSample.count({ where: { category } });
-      const sequentialNumber = count + 1;
-      const code = sampleCodeFor(category, sequentialNumber);
+      const { sequentialNumber, code } = await allocateGlobalSampleCode(tx, category);
       const sample = await tx.interiorSample.create({
         data: {
           ...data,
@@ -560,41 +554,13 @@ export const interiorSampleService = {
       throw new HttpError("Solo ADMIN o la persona que registró la muestra puede eliminarla", 403);
     }
 
-    const laterSamples = await prisma.interiorSample.findMany({
-      where: {
-        category: sample.category,
-        sequentialNumber: { gt: sample.sequentialNumber },
-      },
-      orderBy: { sequentialNumber: "asc" },
-      select: { id: true, sequentialNumber: true, category: true },
-    });
-
     return prisma.$transaction(async (tx) => {
       await tx.interiorSampleResult.deleteMany({ where: { interiorSampleId: id } });
       await tx.interiorLabAssignment.deleteMany({ where: { interiorSampleId: id } });
       const deleted = await tx.interiorSample.delete({ where: { id } });
-      const temporarySuffix = `${Date.now()}-${id.slice(0, 8)}`;
+      const renumbered = await compactGlobalSampleCodesAfterDelete(tx, sample.category, sample.sequentialNumber, userId);
 
-      for (const item of laterSamples) {
-        await tx.interiorSample.update({
-          where: { id: item.id },
-          data: { code: `REN-${temporarySuffix}-${item.id.slice(0, 8)}` },
-        });
-      }
-
-      for (const item of laterSamples) {
-        const sequentialNumber = item.sequentialNumber - 1;
-        await tx.interiorSample.update({
-          where: { id: item.id },
-          data: {
-            sequentialNumber,
-            code: sampleCodeFor(item.category, sequentialNumber),
-            updatedById: userId,
-          } as any,
-        });
-      }
-
-      logger.info({ sampleId: id, category: sample.category, renumbered: laterSamples.length, userId }, "InteriorSample deleted and sequence compacted");
+      logger.info({ sampleId: id, category: sample.category, renumbered: renumbered.length, userId }, "InteriorSample deleted and global sequence compacted");
       return deleted;
     });
   },
@@ -627,9 +593,7 @@ export const interiorSampleService = {
 
     return prisma.$transaction(async (tx) => {
       const category = sampleFields.category ?? "EXPLORATION";
-      const count = await tx.interiorSample.count({ where: { category } });
-      const sequentialNumber = count + 1;
-      const code = sampleCodeFor(category, sequentialNumber);
+      const { sequentialNumber, code } = await allocateGlobalSampleCode(tx, category);
 
       const sample = await tx.interiorSample.create({
         data: {
