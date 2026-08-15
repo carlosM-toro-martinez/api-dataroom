@@ -9,5 +9,6 @@ router.use(authorize("ADMIN"));
 
 router.get("/duplicates", sampleCodeController.getDuplicates);
 router.post("/repair", sampleCodeController.repair);
+router.post("/revert", sampleCodeController.revert);
 
 export default router;

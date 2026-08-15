@@ -22,6 +22,14 @@ type SampleCodeChange = SampleCodeRow & {
   nextSequentialNumber: number;
 };
 
+type LooseSampleCodeChange = Partial<SampleCodeChange> & {
+  module?: SampleModule | string;
+  currentCode?: string;
+  previousCode?: string;
+  nextCode?: string;
+  name?: string | null;
+};
+
 const CATEGORY_LOCK_KEYS: Record<SampleCategory, number> = {
   EXPLORATION: 440001,
   PRODUCTION: 440002
@@ -90,20 +98,22 @@ export const sampleCodeService = {
 
         for (const category of ["EXPLORATION", "PRODUCTION"] as const) {
           await lockCategory(tx, category);
-          const categoryRows = beforeRows
-            .filter((row) => row.category === category)
-            .sort(compareSampleRowsForRenumbering);
-          const planned = categoryRows.flatMap((row, index) => {
-            const nextSequentialNumber = index + 1;
-            const nextCode = sampleCodeFor(category, nextSequentialNumber);
-            if (row.sequentialNumber === nextSequentialNumber && row.code === nextCode) return [];
-            return [{
-              ...row,
-              previousCode: row.code,
-              previousSequentialNumber: row.sequentialNumber,
-              nextCode,
-              nextSequentialNumber
-            }];
+          let nextSequentialNumber = getMaxSequentialNumber(beforeRows, category) + 1;
+          const planned = duplicateReport.duplicates.flatMap((group) => {
+            const duplicateRows = group.samples
+              .filter((row) => row.category === category)
+              .sort(compareSampleRowsForRenumbering);
+            return duplicateRows.slice(1).map((row) => {
+              const assignedNumber = nextSequentialNumber;
+              nextSequentialNumber += 1;
+              return {
+                ...row,
+                previousCode: row.code,
+                previousSequentialNumber: row.sequentialNumber,
+                nextCode: sampleCodeFor(category, assignedNumber),
+                nextSequentialNumber: assignedNumber
+              };
+            });
           });
 
           await temporarilyRenameRows(tx, planned);
@@ -117,6 +127,38 @@ export const sampleCodeService = {
           duplicatesBefore: duplicateReport,
           corrected: changes,
           correctedCount: changes.length
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  },
+
+  async revertSampleCodeRepair(changes: LooseSampleCodeChange[], userId?: number) {
+    return prisma.$transaction(
+      async (tx) => {
+        const normalizedChanges = await normalizeRevertChanges(tx, changes);
+        for (const category of ["EXPLORATION", "PRODUCTION"] as const) {
+          await lockCategory(tx, category);
+          const categoryChanges = normalizedChanges.filter((change) => change.category === category);
+          await temporarilyRenameRows(tx, categoryChanges);
+          for (const change of categoryChanges) {
+            const data = {
+              sequentialNumber: change.previousSequentialNumber,
+              code: change.previousCode,
+              ...(userId !== undefined ? { updatedById: userId } : {})
+            };
+            if (change.module === "interior") {
+              await tx.interiorSample.update({ where: { id: change.id }, data });
+            } else {
+              await tx.surfaceSample.update({ where: { id: change.id }, data });
+            }
+          }
+        }
+
+        return {
+          reverted: normalizedChanges,
+          revertedCount: normalizedChanges.length,
+          duplicatesAfter: buildDuplicateReport(await getGlobalSampleRows(tx))
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
@@ -211,4 +253,84 @@ function compareCode(a: string, b: string) {
 function codeNumber(code: string) {
   const match = code.match(/\d+/);
   return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
+}
+
+function getMaxSequentialNumber(rows: SampleCodeRow[], category: SampleCategory) {
+  return rows
+    .filter((row) => row.category === category)
+    .reduce((max, row) => Math.max(max, row.sequentialNumber), 0);
+}
+
+async function normalizeRevertChanges(tx: Tx, changes: LooseSampleCodeChange[]) {
+  const normalized: SampleCodeChange[] = [];
+
+  for (const change of changes) {
+    const module = normalizeModule(change.module);
+    const previousCode = change.previousCode?.trim();
+    const currentCode = (change.nextCode ?? change.currentCode ?? change.code)?.trim();
+    const previousSequentialNumber = change.previousSequentialNumber ?? codeNumber(previousCode ?? "");
+
+    if (!module || !previousCode || !currentCode || !Number.isFinite(previousSequentialNumber)) {
+      continue;
+    }
+
+    if (change.id && change.category) {
+      normalized.push({
+        ...(change as SampleCodeRow),
+        module,
+        previousCode,
+        previousSequentialNumber,
+        nextCode: currentCode,
+        nextSequentialNumber: change.nextSequentialNumber ?? codeNumber(currentCode)
+      });
+      continue;
+    }
+
+    const row = await findCurrentSampleByVisibleChange(tx, module, currentCode, change.name);
+    if (!row) continue;
+
+    normalized.push({
+      ...row,
+      previousCode,
+      previousSequentialNumber,
+      nextCode: currentCode,
+      nextSequentialNumber: row.sequentialNumber
+    });
+  }
+
+  return normalized;
+}
+
+async function findCurrentSampleByVisibleChange(
+  tx: Tx,
+  module: SampleModule,
+  currentCode: string,
+  name?: string | null
+) {
+  const where = {
+    code: currentCode,
+    ...(name ? { name } : {})
+  };
+
+  if (module === "interior") {
+    const row = await tx.interiorSample.findFirst({
+      where,
+      select: { id: true, category: true, code: true, sequentialNumber: true, name: true, createdAt: true }
+    });
+    return row ? { ...row, module } : null;
+  }
+
+  const row = await tx.surfaceSample.findFirst({
+    where,
+    select: { id: true, category: true, code: true, sequentialNumber: true, name: true, createdAt: true }
+  });
+  return row ? { ...row, module } : null;
+}
+
+function normalizeModule(module: LooseSampleCodeChange["module"]): SampleModule | null {
+  if (module === "interior" || module === "surface") return module;
+  const normalized = String(module ?? "").trim().toLowerCase();
+  if (normalized.includes("interior")) return "interior";
+  if (normalized.includes("superficie") || normalized.includes("surface")) return "surface";
+  return null;
 }

@@ -26,5 +26,17 @@ export const sampleCodeController = {
     } catch (error) {
       fail(res, error);
     }
+  },
+
+  async revert(req: AuthRequest, res: Response) {
+    try {
+      const changes = Array.isArray(req.body?.changes) ? req.body.changes : [];
+      if (changes.length === 0) {
+        throw new HttpError("No hay correcciones para revertir.", 400);
+      }
+      ok(res, await sampleCodeService.revertSampleCodeRepair(changes, req.user?.id));
+    } catch (error) {
+      fail(res, error);
+    }
   }
 };
