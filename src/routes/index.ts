@@ -7,6 +7,7 @@ import miningExcelRoutes from "../modules/miningExcel/miningExcel.routes.js";
 import interiorSampleRoutes from "../modules/interiorSample/interiorSample.routes.js";
 import surfaceSampleRoutes from "../modules/surfaceSample/surfaceSample.routes.js";
 import sampleCodeRoutes from "../modules/sampleCodes/sampleCode.routes.js";
+import mediaRoutes from "../modules/media/media.routes.js";
 
 const router = Router();
 
@@ -19,5 +20,6 @@ router.use("/imports/mining-excel", miningExcelRoutes);
 router.use("/interior", interiorSampleRoutes);
 router.use("/surface-sample", surfaceSampleRoutes);
 router.use("/sample-codes", sampleCodeRoutes);
+router.use("/media", mediaRoutes);
 
 export default router;

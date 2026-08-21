@@ -4,5 +4,7 @@ dist/
 .env.server
 logs/
 *.log
+storage/media/data-room/*
+!storage/media/data-room/.gitkeep
 docker-compose.yml
 API_DOCS.md
