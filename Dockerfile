@@ -27,9 +27,10 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY storage/media/data-room/*.optimized.mp4 ./storage-seed/media/data-room/
 COPY package*.json ./
 
 EXPOSE 3000
 
 # Aplica migraciones pendientes y arranca el servidor
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/server.js"]
+CMD ["sh", "-c", "mkdir -p /app/storage/media/data-room && cp -n /app/storage-seed/media/data-room/*.optimized.mp4 /app/storage/media/data-room/ 2>/dev/null || true && npx prisma migrate deploy && node dist/src/server.js"]

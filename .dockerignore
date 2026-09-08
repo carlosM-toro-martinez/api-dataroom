@@ -5,3 +5,7 @@ dist
 *.log
 .git
 .gitignore
+storage/**
+!storage/media/
+!storage/media/data-room/
+!storage/media/data-room/*.optimized.mp4

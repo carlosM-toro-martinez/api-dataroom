@@ -6,5 +6,6 @@ logs/
 *.log
 storage/media/data-room/*
 !storage/media/data-room/.gitkeep
+!storage/media/data-room/*.optimized.mp4
 docker-compose.yml
 API_DOCS.md
