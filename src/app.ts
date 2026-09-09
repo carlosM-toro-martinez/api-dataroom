@@ -11,7 +11,7 @@ const corsOptions: cors.CorsOptions = {
   origin: true,
   credentials: true,
   methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-device-id"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-device-id", "x-requested-with"],
   optionsSuccessStatus: 204
 };
 
