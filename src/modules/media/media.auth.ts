@@ -1,5 +1,5 @@
 import type { NextFunction, Response } from "express";
-import jwt, { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import { getJwtSecret } from "../../config/auth.js";
 import { logger } from "../../config/logger.js";
@@ -60,11 +60,11 @@ export async function authenticateMedia(req: AuthRequest, res: Response, next: N
     next();
   } catch (error) {
     const path = req.originalUrl.split("?")[0];
-    if (error instanceof TokenExpiredError) {
-      logger.warn({ path, expiredAt: error.expiredAt }, "Expired media access token");
+    if (error instanceof Error && error.name === "TokenExpiredError") {
+      logger.warn({ path }, "Expired media access token");
       return res.status(401).json({ success: false, error: "Token expirado" });
     }
-    if (error instanceof JsonWebTokenError) {
+    if (error instanceof Error && error.name === "JsonWebTokenError") {
       logger.warn({ path, reason: error.message }, "Invalid media access token");
       return res.status(401).json({ success: false, error: "Token inválido" });
     }
