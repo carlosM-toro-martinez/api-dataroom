@@ -7,8 +7,16 @@ import { logger } from "./config/logger.js";
 import routes from "./routes/index.js";
 
 const app = express();
+const corsOptions: cors.CorsOptions = {
+  origin: true,
+  credentials: true,
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-device-id"],
+  optionsSuccessStatus: 204
+};
 
-app.use(cors());
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
