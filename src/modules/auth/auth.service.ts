@@ -17,9 +17,8 @@ import type {
 } from "./auth.types.js";
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
+import { getJwtSecret, getRefreshTokenSecret } from "../../config/auth.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || "refresh_secret";
 const ACCESS_TOKEN_EXPIRY = "8h";
 const REFRESH_TOKEN_EXPIRY = "7d";
 const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -138,11 +137,11 @@ export const authService = {
       }
     }
 
-    const accessToken = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
+    const accessToken = jwt.sign({ id: user.id, role: user.role }, getJwtSecret(), {
       expiresIn: ACCESS_TOKEN_EXPIRY,
     });
 
-    const refreshToken = jwt.sign({ id: user.id }, REFRESH_TOKEN_SECRET, {
+    const refreshToken = jwt.sign({ id: user.id }, getRefreshTokenSecret(), {
       expiresIn: REFRESH_TOKEN_EXPIRY,
     });
 
@@ -418,7 +417,7 @@ export const authService = {
 
   async refresh(refreshToken: string, deviceId?: string) {
     try {
-      const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET) as { id: number };
+      const decoded = jwt.verify(refreshToken, getRefreshTokenSecret()) as { id: number };
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },
         select: {
@@ -452,7 +451,7 @@ export const authService = {
         }
       }
 
-      const newAccessToken = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
+      const newAccessToken = jwt.sign({ id: user.id, role: user.role }, getJwtSecret(), {
         expiresIn: ACCESS_TOKEN_EXPIRY,
       });
 

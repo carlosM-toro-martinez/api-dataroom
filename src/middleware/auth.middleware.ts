@@ -1,9 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import { getJwtSecret } from "../config/auth.js";
 import { prisma } from "../config/prisma.js";
-
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
 
 export interface AuthRequest extends Request {
   user?: { id: number; role: string };
@@ -20,7 +19,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: number; role: string };
+    const decoded = jwt.verify(token, getJwtSecret()) as { id: number; role: string };
     if (decoded.role === "VISITANTE") {
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },
