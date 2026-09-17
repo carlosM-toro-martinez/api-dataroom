@@ -942,17 +942,17 @@ export const interiorSampleService = {
 
   async createInteriorDispatch(data: CreateInteriorDispatchDTO, userId?: number) {
     const lab = await prisma.interiorLaboratory.findUnique({ where: { id: data.interiorLaboratoryId } });
-    if (!lab) throw new HttpError("Interior laboratory not found", 404);
+    if (!lab) throw new HttpError("No se encontro el laboratorio seleccionado para el lote.", 404);
 
     const sampleIds = data.items.map((i) => i.interiorSampleId);
     const samples = await prisma.interiorSample.findMany({ where: { id: { in: sampleIds } } });
     if (samples.length !== sampleIds.length)
-      throw new HttpError("One or more samples not found", 404);
+      throw new HttpError("Una o mas muestras del lote ya no existen o no estan sincronizadas. Actualiza la lista y vuelve a seleccionarlas.", 404);
 
     const allElementIds = [...new Set(data.items.flatMap((i) => i.elementIds))];
     const elements = await prisma.element.findMany({ where: { id: { in: allElementIds } } });
     if (elements.length !== allElementIds.length)
-      throw new HttpError("One or more elements not found", 404);
+      throw new HttpError("Uno o mas elementos solicitados no existen o aun son locales. Sincroniza catalogos y vuelve a seleccionarlos.", 404);
 
     return prisma.$transaction(async (tx) => {
       const dispatch = await tx.interiorSampleDispatch.create({
