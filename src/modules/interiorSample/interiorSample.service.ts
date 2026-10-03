@@ -2,6 +2,7 @@ import { prisma } from "../../config/prisma.js";
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
 import { allocateGlobalSampleCode, compactGlobalSampleCodesAfterDelete } from "../sampleCodes/sampleCode.service.js";
+import { assertSampleNameMatchesLocation } from "../sampleCodes/sampleName.js";
 import type {
   CreateInteriorAreaDTO,
   CreateInteriorDispatchDTO,
@@ -497,6 +498,7 @@ export const interiorSampleService = {
       include: { level: { include: { area: true } } },
     });
     if (!labor) throw new HttpError("Interior labor not found", 404);
+    assertSampleNameMatchesLocation(data.name, { area: labor.level.area, level: labor.level, labor });
     const objective = await prisma.interiorObjective.findUnique({ where: { id: data.interiorObjectiveId } });
     if (!objective) throw new HttpError("Interior objective not found", 404);
 
@@ -520,7 +522,10 @@ export const interiorSampleService = {
   },
 
   async updateInteriorSample(id: string, data: UpdateInteriorSampleDTO, userId?: number) {
-    await this.getInteriorSampleById(id);
+    const current = await this.getInteriorSampleById(id);
+    if (data.name !== undefined && data.name !== current.name) {
+      assertSampleNameMatchesLocation(data.name, { area: current.labor.level.area, level: current.labor.level, labor: current.labor });
+    }
     if (data.interiorObjectiveId) {
       const obj = await prisma.interiorObjective.findUnique({ where: { id: data.interiorObjectiveId } });
       if (!obj) throw new HttpError("Interior objective not found", 404);
@@ -572,6 +577,7 @@ export const interiorSampleService = {
       include: { level: { include: { area: true } } },
     });
     if (!labor) throw new HttpError("Interior labor not found", 404);
+    assertSampleNameMatchesLocation(data.name, { area: labor.level.area, level: labor.level, labor });
     const objective = await prisma.interiorObjective.findUnique({ where: { id: data.interiorObjectiveId } });
     if (!objective) throw new HttpError("Interior objective not found", 404);
 
@@ -654,7 +660,10 @@ export const interiorSampleService = {
   },
 
   async updateInteriorSampleWithResults(id: string, data: UpdateInteriorSampleWithResultsDTO, userId?: number) {
-    await this.getInteriorSampleById(id);
+    const current = await this.getInteriorSampleById(id);
+    if (data.name !== undefined && data.name !== current.name) {
+      assertSampleNameMatchesLocation(data.name, { area: current.labor.level.area, level: current.labor.level, labor: current.labor });
+    }
     if (data.interiorObjectiveId) {
       const obj = await prisma.interiorObjective.findUnique({ where: { id: data.interiorObjectiveId } });
       if (!obj) throw new HttpError("Interior objective not found", 404);

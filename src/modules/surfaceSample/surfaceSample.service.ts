@@ -2,6 +2,7 @@ import { prisma } from "../../config/prisma.js";
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
 import { allocateGlobalSampleCode, compactGlobalSampleCodesAfterDelete } from "../sampleCodes/sampleCode.service.js";
+import { assertSampleNameMatchesLocation } from "../sampleCodes/sampleName.js";
 import type {
   CreateSurfaceAreaDTO,
   CreateSurfaceDispatchDTO,
@@ -581,6 +582,7 @@ export const surfaceSampleService = {
       include: { level: { include: { area: true } } },
     });
     if (!labor) throw new HttpError("Surface labor not found", 404);
+    assertSampleNameMatchesLocation(data.name, { area: labor.level.area, level: labor.level, labor });
     const objective = await prisma.surfaceObjective.findUnique({ where: { id: data.surfaceObjectiveId } });
     if (!objective) throw new HttpError("Surface objective not found", 404);
 
@@ -604,7 +606,10 @@ export const surfaceSampleService = {
   },
 
   async updateSurfaceSample(id: string, data: UpdateSurfaceSampleDTO, userId?: number) {
-    await this.getSurfaceSampleById(id);
+    const current = await this.getSurfaceSampleById(id);
+    if (data.name !== undefined && data.name !== current.name) {
+      assertSampleNameMatchesLocation(data.name, { area: current.labor.level.area, level: current.labor.level, labor: current.labor });
+    }
     if (data.surfaceObjectiveId) {
       const obj = await prisma.surfaceObjective.findUnique({ where: { id: data.surfaceObjectiveId } });
       if (!obj) throw new HttpError("Surface objective not found", 404);
@@ -656,6 +661,7 @@ export const surfaceSampleService = {
       include: { level: { include: { area: true } } },
     });
     if (!labor) throw new HttpError("Surface labor not found", 404);
+    assertSampleNameMatchesLocation(data.name, { area: labor.level.area, level: labor.level, labor });
     const objective = await prisma.surfaceObjective.findUnique({ where: { id: data.surfaceObjectiveId } });
     if (!objective) throw new HttpError("Surface objective not found", 404);
 
@@ -737,7 +743,10 @@ export const surfaceSampleService = {
   },
 
   async updateSurfaceSampleWithResults(id: string, data: UpdateSurfaceSampleWithResultsDTO, userId?: number) {
-    await this.getSurfaceSampleById(id);
+    const current = await this.getSurfaceSampleById(id);
+    if (data.name !== undefined && data.name !== current.name) {
+      assertSampleNameMatchesLocation(data.name, { area: current.labor.level.area, level: current.labor.level, labor: current.labor });
+    }
     if (data.surfaceObjectiveId) {
       const obj = await prisma.surfaceObjective.findUnique({ where: { id: data.surfaceObjectiveId } });
       if (!obj) throw new HttpError("Surface objective not found", 404);
