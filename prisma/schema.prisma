@@ -698,6 +698,7 @@ model InteriorSampleResult {
 
 model InteriorSampleDispatch {
   id                   String                 @id @default(uuid())
+  folio                Int                    @unique @default(autoincrement())
   interiorLaboratoryId String
   projectName          String?
   sentAt               DateTime
@@ -906,6 +907,7 @@ model SurfaceSampleResult {
 
 model SurfaceSampleDispatch {
   id                  String                @id @default(uuid())
+  folio               Int                   @unique @default(autoincrement())
   surfaceLaboratoryId String
   projectName         String?
   sentAt              DateTime

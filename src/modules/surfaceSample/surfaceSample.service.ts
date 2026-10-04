@@ -123,6 +123,63 @@ async function handleSurfaceSampleDelivered(sampleId: string, tx: any) {
   }
 }
 
+// Shared with the mixed (interior + superficie) dispatch batch in dispatchBatch.service.ts.
+export async function assertSurfaceDispatchInput(data: CreateSurfaceDispatchDTO) {
+  const lab = await prisma.surfaceLaboratory.findUnique({ where: { id: data.surfaceLaboratoryId } });
+  if (!lab) throw new HttpError("No se encontro el laboratorio seleccionado para el lote.", 404);
+
+  const sampleIds = data.items.map((i) => i.surfaceSampleId);
+  const samples = await prisma.surfaceSample.findMany({ where: { id: { in: sampleIds } } });
+  if (samples.length !== sampleIds.length)
+    throw new HttpError("Una o mas muestras del lote ya no existen o no estan sincronizadas. Actualiza la lista y vuelve a seleccionarlas.", 404);
+
+  const allElementIds = [...new Set(data.items.flatMap((i) => i.elementIds))];
+  const elements = await prisma.element.findMany({ where: { id: { in: allElementIds } } });
+  if (elements.length !== allElementIds.length)
+    throw new HttpError("Uno o mas elementos solicitados no existen o aun son locales. Sincroniza catalogos y vuelve a seleccionarlos.", 404);
+}
+
+export async function createSurfaceDispatchInTx(tx: any, data: CreateSurfaceDispatchDTO, userId?: number, folio?: number) {
+  const dispatch = await tx.surfaceSampleDispatch.create({
+    data: {
+      surfaceLaboratoryId: data.surfaceLaboratoryId,
+      ...(folio !== undefined ? { folio } : {}),
+      projectName: data.projectName,
+      sentAt: new Date(data.sentAt),
+      notes: data.notes,
+      createdById: userId,
+      updatedById: userId,
+    } as any,
+  });
+
+  for (const itemData of data.items) {
+    const item = await tx.surfaceDispatchItem.create({
+      data: {
+        dispatchId: dispatch.id,
+        surfaceSampleId: itemData.surfaceSampleId,
+        notes: itemData.notes,
+        createdById: userId,
+        updatedById: userId,
+      } as any,
+    });
+
+    for (const elementId of itemData.elementIds) {
+      await tx.surfaceDispatchElement.create({
+        data: { dispatchItemId: item.id, elementId } as any,
+      });
+    }
+
+    await tx.surfaceSample.update({
+      where: { id: itemData.surfaceSampleId },
+      data: { status: "DISPATCHED", updatedById: userId } as any,
+    });
+  }
+
+  logger.info({ dispatchId: dispatch.id, sampleCount: data.items.length, userId }, "SurfaceDispatch created");
+
+  return tx.surfaceSampleDispatch.findUnique({ where: { id: dispatch.id }, include: DISPATCH_INCLUDE });
+}
+
 export const surfaceSampleService = {
 
   // ─── SurfaceArea ──────────────────────────────────────────────────────────
@@ -921,6 +978,7 @@ export const surfaceSampleService = {
     const where: any = {};
     if (query.surfaceLaboratoryId) where.surfaceLaboratoryId = query.surfaceLaboratoryId;
     if (query.status) where.status = query.status;
+    if (query.folio !== undefined) where.folio = query.folio;
     const [data, total] = await Promise.all([
       prisma.surfaceSampleDispatch.findMany({
         where,
@@ -944,58 +1002,8 @@ export const surfaceSampleService = {
   },
 
   async createSurfaceDispatch(data: CreateSurfaceDispatchDTO, userId?: number) {
-    const lab = await prisma.surfaceLaboratory.findUnique({ where: { id: data.surfaceLaboratoryId } });
-    if (!lab) throw new HttpError("No se encontro el laboratorio seleccionado para el lote.", 404);
-
-    const sampleIds = data.items.map((i) => i.surfaceSampleId);
-    const samples = await prisma.surfaceSample.findMany({ where: { id: { in: sampleIds } } });
-    if (samples.length !== sampleIds.length)
-      throw new HttpError("Una o mas muestras del lote ya no existen o no estan sincronizadas. Actualiza la lista y vuelve a seleccionarlas.", 404);
-
-    const allElementIds = [...new Set(data.items.flatMap((i) => i.elementIds))];
-    const elements = await prisma.element.findMany({ where: { id: { in: allElementIds } } });
-    if (elements.length !== allElementIds.length)
-      throw new HttpError("Uno o mas elementos solicitados no existen o aun son locales. Sincroniza catalogos y vuelve a seleccionarlos.", 404);
-
-    return prisma.$transaction(async (tx) => {
-      const dispatch = await tx.surfaceSampleDispatch.create({
-        data: {
-          surfaceLaboratoryId: data.surfaceLaboratoryId,
-          projectName: data.projectName,
-          sentAt: new Date(data.sentAt),
-          notes: data.notes,
-          createdById: userId,
-          updatedById: userId,
-        } as any,
-      });
-
-      for (const itemData of data.items) {
-        const item = await tx.surfaceDispatchItem.create({
-          data: {
-            dispatchId: dispatch.id,
-            surfaceSampleId: itemData.surfaceSampleId,
-            notes: itemData.notes,
-            createdById: userId,
-            updatedById: userId,
-          } as any,
-        });
-
-        for (const elementId of itemData.elementIds) {
-          await tx.surfaceDispatchElement.create({
-            data: { dispatchItemId: item.id, elementId } as any,
-          });
-        }
-
-        await tx.surfaceSample.update({
-          where: { id: itemData.surfaceSampleId },
-          data: { status: "DISPATCHED", updatedById: userId } as any,
-        });
-      }
-
-      logger.info({ dispatchId: dispatch.id, sampleCount: data.items.length, userId }, "SurfaceDispatch created");
-
-      return tx.surfaceSampleDispatch.findUnique({ where: { id: dispatch.id }, include: DISPATCH_INCLUDE });
-    });
+    await assertSurfaceDispatchInput(data);
+    return prisma.$transaction((tx) => createSurfaceDispatchInTx(tx, data, userId));
   },
 
   async updateSurfaceDispatch(id: string, data: UpdateSurfaceDispatchDTO, userId?: number) {

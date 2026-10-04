@@ -238,6 +238,7 @@ export const updateInteriorSampleWithResultsSchema = z.object({
 // ─── InteriorDispatch (Nota de Remisión) ─────────────────────────────────────
 export const interiorDispatchQuerySchema = pagination.extend({
   interiorLaboratoryId: z.string().uuid().optional(),
+  folio: z.coerce.number().int().positive().optional(),
   status: z.enum(DISPATCH_STATUSES).optional(),
 });
 

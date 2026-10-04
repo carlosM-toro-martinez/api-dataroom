@@ -124,6 +124,63 @@ async function handleInteriorSampleDelivered(sampleId: string, tx: any) {
   }
 }
 
+// Shared with the mixed (interior + superficie) dispatch batch in dispatchBatch.service.ts.
+export async function assertInteriorDispatchInput(data: CreateInteriorDispatchDTO) {
+  const lab = await prisma.interiorLaboratory.findUnique({ where: { id: data.interiorLaboratoryId } });
+  if (!lab) throw new HttpError("No se encontro el laboratorio seleccionado para el lote.", 404);
+
+  const sampleIds = data.items.map((i) => i.interiorSampleId);
+  const samples = await prisma.interiorSample.findMany({ where: { id: { in: sampleIds } } });
+  if (samples.length !== sampleIds.length)
+    throw new HttpError("Una o mas muestras del lote ya no existen o no estan sincronizadas. Actualiza la lista y vuelve a seleccionarlas.", 404);
+
+  const allElementIds = [...new Set(data.items.flatMap((i) => i.elementIds))];
+  const elements = await prisma.element.findMany({ where: { id: { in: allElementIds } } });
+  if (elements.length !== allElementIds.length)
+    throw new HttpError("Uno o mas elementos solicitados no existen o aun son locales. Sincroniza catalogos y vuelve a seleccionarlos.", 404);
+}
+
+export async function createInteriorDispatchInTx(tx: any, data: CreateInteriorDispatchDTO, userId?: number, folio?: number) {
+  const dispatch = await tx.interiorSampleDispatch.create({
+    data: {
+      interiorLaboratoryId: data.interiorLaboratoryId,
+      ...(folio !== undefined ? { folio } : {}),
+      projectName: data.projectName,
+      sentAt: new Date(data.sentAt),
+      notes: data.notes,
+      createdById: userId,
+      updatedById: userId,
+    } as any,
+  });
+
+  for (const itemData of data.items) {
+    const item = await tx.interiorDispatchItem.create({
+      data: {
+        dispatchId: dispatch.id,
+        interiorSampleId: itemData.interiorSampleId,
+        notes: itemData.notes,
+        createdById: userId,
+        updatedById: userId,
+      } as any,
+    });
+
+    for (const elementId of itemData.elementIds) {
+      await tx.interiorDispatchElement.create({
+        data: { dispatchItemId: item.id, elementId } as any,
+      });
+    }
+
+    await tx.interiorSample.update({
+      where: { id: itemData.interiorSampleId },
+      data: { status: "DISPATCHED", updatedById: userId } as any,
+    });
+  }
+
+  logger.info({ dispatchId: dispatch.id, sampleCount: data.items.length, userId }, "InteriorDispatch created");
+
+  return tx.interiorSampleDispatch.findUnique({ where: { id: dispatch.id }, include: DISPATCH_INCLUDE });
+}
+
 export const interiorSampleService = {
 
   // ─── InteriorArea ─────────────────────────────────────────────────────────
@@ -927,6 +984,7 @@ export const interiorSampleService = {
     const where: any = {};
     if (query.interiorLaboratoryId) where.interiorLaboratoryId = query.interiorLaboratoryId;
     if (query.status) where.status = query.status;
+    if (query.folio !== undefined) where.folio = query.folio;
     const [data, total] = await Promise.all([
       prisma.interiorSampleDispatch.findMany({
         where,
@@ -950,58 +1008,8 @@ export const interiorSampleService = {
   },
 
   async createInteriorDispatch(data: CreateInteriorDispatchDTO, userId?: number) {
-    const lab = await prisma.interiorLaboratory.findUnique({ where: { id: data.interiorLaboratoryId } });
-    if (!lab) throw new HttpError("No se encontro el laboratorio seleccionado para el lote.", 404);
-
-    const sampleIds = data.items.map((i) => i.interiorSampleId);
-    const samples = await prisma.interiorSample.findMany({ where: { id: { in: sampleIds } } });
-    if (samples.length !== sampleIds.length)
-      throw new HttpError("Una o mas muestras del lote ya no existen o no estan sincronizadas. Actualiza la lista y vuelve a seleccionarlas.", 404);
-
-    const allElementIds = [...new Set(data.items.flatMap((i) => i.elementIds))];
-    const elements = await prisma.element.findMany({ where: { id: { in: allElementIds } } });
-    if (elements.length !== allElementIds.length)
-      throw new HttpError("Uno o mas elementos solicitados no existen o aun son locales. Sincroniza catalogos y vuelve a seleccionarlos.", 404);
-
-    return prisma.$transaction(async (tx) => {
-      const dispatch = await tx.interiorSampleDispatch.create({
-        data: {
-          interiorLaboratoryId: data.interiorLaboratoryId,
-          projectName: data.projectName,
-          sentAt: new Date(data.sentAt),
-          notes: data.notes,
-          createdById: userId,
-          updatedById: userId,
-        } as any,
-      });
-
-      for (const itemData of data.items) {
-        const item = await tx.interiorDispatchItem.create({
-          data: {
-            dispatchId: dispatch.id,
-            interiorSampleId: itemData.interiorSampleId,
-            notes: itemData.notes,
-            createdById: userId,
-            updatedById: userId,
-          } as any,
-        });
-
-        for (const elementId of itemData.elementIds) {
-          await tx.interiorDispatchElement.create({
-            data: { dispatchItemId: item.id, elementId } as any,
-          });
-        }
-
-        await tx.interiorSample.update({
-          where: { id: itemData.interiorSampleId },
-          data: { status: "DISPATCHED", updatedById: userId } as any,
-        });
-      }
-
-      logger.info({ dispatchId: dispatch.id, sampleCount: data.items.length, userId }, "InteriorDispatch created");
-
-      return tx.interiorSampleDispatch.findUnique({ where: { id: dispatch.id }, include: DISPATCH_INCLUDE });
-    });
+    await assertInteriorDispatchInput(data);
+    return prisma.$transaction((tx) => createInteriorDispatchInTx(tx, data, userId));
   },
 
   async updateInteriorDispatch(id: string, data: UpdateInteriorDispatchDTO, userId?: number) {

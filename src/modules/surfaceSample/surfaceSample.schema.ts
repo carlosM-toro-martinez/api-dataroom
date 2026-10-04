@@ -233,6 +233,7 @@ export const updateSurfaceSampleWithResultsSchema = z.object({
 // ─── SurfaceDispatch (Nota de Remisión) ──────────────────────────────────────
 export const surfaceDispatchQuerySchema = pagination.extend({
   surfaceLaboratoryId: z.string().uuid().optional(),
+  folio: z.coerce.number().int().positive().optional(),
   status: z.enum(DISPATCH_STATUSES).optional(),
 });
 
