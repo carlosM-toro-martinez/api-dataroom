@@ -78,6 +78,7 @@ export const updateLaboratorySchema = createLaboratorySchema.partial().strict();
 
 // ─── Campañas ────────────────────────────────────────────────────────────────
 export const campaignQuerySchema = pagination.extend({
+  area: optionalText,
   category: z.enum(SAMPLE_CATEGORIES).optional(),
   status: z.enum(CAMPAIGN_STATUSES).optional(),
   search: optionalText,
@@ -86,13 +87,14 @@ export const campaignQuerySchema = pagination.extend({
 export const createCampaignSchema = z.object({
   name: text,
   code: text,
+  area: optionalText.nullable(),
   category: z.enum(SAMPLE_CATEGORIES).optional(),
   status: z.enum(CAMPAIGN_STATUSES).optional(),
-  objective: optionalText,
-  plannedMeters: z.number().min(0).optional(),
-  startDate: datetime.optional(),
-  endDate: datetime.optional(),
-  description: optionalText,
+  objective: optionalText.nullable(),
+  plannedMeters: z.number().min(0).nullable().optional(),
+  startDate: datetime.nullable().optional(),
+  endDate: datetime.nullable().optional(),
+  description: optionalText.nullable(),
 }).strict();
 export const updateCampaignSchema = createCampaignSchema.partial().strict();
 
@@ -109,41 +111,107 @@ const holeFields = {
   type: z.enum(HOLE_TYPES).optional(),
   status: z.enum(HOLE_STATUSES).optional(),
   locationType: z.enum(LOCATION_TYPES).optional(),
-  sector: optionalText,
-  target: optionalText,
-  rigId: z.string().uuid().optional(),
-  contractorId: z.string().uuid().optional(),
-  plannedEast: z.number().optional(),
-  plannedNorth: z.number().optional(),
-  plannedElevation: z.number().optional(),
-  plannedAzimuth: z.number().min(0).max(360).optional(),
-  plannedDip: z.number().min(-90).max(90).optional(),
-  plannedDepth: depth.optional(),
-  east: z.number().optional(),
-  north: z.number().optional(),
-  elevation: z.number().optional(),
-  azimuth: z.number().min(0).max(360).optional(),
-  dip: z.number().min(-90).max(90).optional(),
-  finalDepth: depth.optional(),
-  startedAt: datetime.optional(),
-  finishedAt: datetime.optional(),
-  notes: optionalText,
+  sector: optionalText.nullable(),
+  target: optionalText.nullable(),
+  rigId: z.string().uuid().nullable().optional(),
+  contractorId: z.string().uuid().nullable().optional(),
+  plannedEast: z.number().nullable().optional(),
+  plannedNorth: z.number().nullable().optional(),
+  plannedElevation: z.number().nullable().optional(),
+  plannedAzimuth: z.number().min(0).max(360).nullable().optional(),
+  plannedDip: z.number().min(-90).max(90).nullable().optional(),
+  plannedDepth: depth.nullable().optional(),
+  east: z.number().nullable().optional(),
+  north: z.number().nullable().optional(),
+  elevation: z.number().nullable().optional(),
+  azimuth: z.number().min(0).max(360).nullable().optional(),
+  dip: z.number().min(-90).max(90).nullable().optional(),
+  finalDepth: depth.nullable().optional(),
+  startedAt: datetime.nullable().optional(),
+  finishedAt: datetime.nullable().optional(),
+  notes: optionalText.nullable(),
 };
 export const createHoleSchema = z.object({ campaignId: z.string().uuid(), ...holeFields }).strict();
+
+// Importación de un programa completo (p. ej. desde el Excel de programa DDH).
+export const importHolesSchema = z.object({
+  campaignId: z.string().uuid(),
+  holes: z.array(z.object(holeFields).strict()).min(1, "Agrega al menos un pozo").max(500),
+}).strict();
 export const updateHoleSchema = z.object(holeFields).partial().strict();
 
 // ─── Registros del pozo ──────────────────────────────────────────────────────
+// ─── Parte diario (formato "Reporte diario de perforación diamantina") ───────
+const shortText = z.string().trim().max(120).nullable().optional();
+const longText = z.string().trim().max(4000).nullable().optional();
+const quantity = z.number().min(0).max(100000).nullable().optional();
+const clock = z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d$/, "Hora HH:MM").or(z.literal("")).nullable().optional();
+
+const activitySchema = z.object({
+  from: clock,
+  to: clock,
+  depthFrom: z.number().min(0).nullable().optional(),
+  depthTo: z.number().min(0).nullable().optional(),
+  description: z.string().trim().max(500).nullable().optional(),
+  lithology: z.string().trim().max(200).nullable().optional(),
+}).strict();
+
+const incidentSchema = z.object({
+  id: z.string().min(1).max(64),
+  category: z.string().trim().min(1).max(60),
+  severity: z.enum(["LOW", "MEDIUM", "HIGH"]),
+  description: z.string().trim().min(1).max(1000),
+  status: z.enum(["OPEN", "RESOLVED"]),
+  resolution: z.string().trim().max(1000).nullable().optional(),
+  resolvedBy: z.string().trim().max(120).nullable().optional(),
+  resolvedAt: datetime.nullable().optional(),
+  createdAt: datetime.nullable().optional(),
+}).strict();
+
+const quantities = (keys: readonly string[]) =>
+  z.object(Object.fromEntries(keys.map((key) => [key, quantity])) as Record<string, typeof quantity>).partial();
+
 const shiftFields = {
-  rigId: z.string().uuid().optional(),
+  rigId: z.string().uuid().nullable().optional(),
   date: datetime,
   shift: z.enum(SHIFTS).optional(),
-  drillingHours: z.number().min(0).max(24).optional(),
-  standbyHours: z.number().min(0).max(24).optional(),
-  diameter: optionalText,
-  operator: optionalText,
-  observations: optionalText,
+  drillingHours: z.number().min(0).max(24).nullable().optional(),
+  standbyHours: z.number().min(0).max(24).nullable().optional(),
+  diameter: shortText,
+  operator: shortText,
+  observations: longText,
+  reportNumber: shortText,
+  coreRecovery: z.number().min(0).nullable().optional(),
+  waterReturn: shortText,
+  rockType: shortText,
+  rigName: shortText,
+  coreBoxNumber: shortText,
+  drillingMethod: z.enum(["DIAMOND", "REVERSE_AIR"]).nullable().optional(),
+  rcDiameter: shortText,
+  casing: shortText,
+  crownNumber: shortText,
+  reamerNumber: shortText,
+  shoeNumber: shortText,
+  firstHelper: shortText,
+  secondHelper: shortText,
+  driver: shortText,
+  supervisor: shortText,
+  drillingChief: shortText,
+  activities: z.array(activitySchema).max(60).nullable().optional(),
+  consumables: quantities(["diesel", "gasoline", "hydraulicOil", "engineOil", "gearOil"])
+    .extend({ other: z.string().trim().max(200).nullable().optional() })
+    .nullable()
+    .optional(),
+  additives: quantities(["bentonite", "polymerPac", "polymerPhpa", "surfactants", "lubricants", "cement"]).nullable().optional(),
+  timeDetail: z.object({ casing: z.number().min(0).max(24).nullable().optional(), maintenance: z.number().min(0).max(24).nullable().optional(), transfer: z.number().min(0).max(24).nullable().optional(), unloading: z.number().min(0).max(24).nullable().optional() }).nullable().optional(),
+  incidents: z.array(incidentSchema).max(50).nullable().optional(),
+  reviewStatus: z.enum(["PENDING", "REVIEWED"]).optional(),
+  reviewedBy: shortText,
+  reviewedAt: datetime.nullable().optional(),
+  reviewNotes: longText,
 };
-export const createShiftReportSchema = depthRange(shiftFields);
+// id opcional generado en el dispositivo (partes registrados sin conexión).
+export const createShiftReportSchema = depthRange({ id: z.string().uuid().optional(), ...shiftFields });
 export const updateShiftReportSchema = partialDepthRange({ ...shiftFields, date: datetime.optional() });
 
 const surveyFields = {

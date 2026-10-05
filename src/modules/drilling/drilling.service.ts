@@ -13,7 +13,7 @@ const pg = (q: Query) => {
 };
 
 const toDate = (value?: string | null) => (value ? new Date(value) : value === null ? null : undefined);
-const DATE_FIELDS = ["startDate", "endDate", "startedAt", "finishedAt", "date", "measuredAt", "loggedAt", "sampledAt", "sentAt"];
+const DATE_FIELDS = ["startDate", "endDate", "startedAt", "finishedAt", "date", "measuredAt", "loggedAt", "sampledAt", "sentAt", "reviewedAt"];
 
 function withDates<T extends Record<string, unknown>>(data: T) {
   const out: Record<string, unknown> = { ...data };
@@ -152,8 +152,8 @@ export const laboratories = crud({
 export const campaigns = crud({
   delegate: () => prisma.drillingCampaign,
   label: "Campaña",
-  searchFields: ["name", "code"],
-  filters: ["category", "status"],
+  searchFields: ["name", "code", "area"],
+  filters: ["category", "status", "area"],
   include: { _count: { select: { holes: true } } },
 });
 
@@ -172,12 +172,69 @@ const holesBase = crud({
   include: HOLE_LIST_INCLUDE,
 });
 
+// Al pasar a "en perforación" / "terminado" se registra la fecha si aún no tiene.
+async function withStatusDates(id: string, data: Record<string, unknown>) {
+  if (data.status !== "DRILLING" && data.status !== "COMPLETED") return data;
+  const current = await prisma.drillingHole.findUnique({ where: { id }, select: { startedAt: true, finishedAt: true } });
+  if (!current) return data;
+  const next = { ...data };
+  const now = new Date().toISOString();
+  if (!current.startedAt && next.startedAt === undefined) next.startedAt = now;
+  if (data.status === "COMPLETED" && !current.finishedAt && next.finishedAt === undefined) next.finishedAt = now;
+  return next;
+}
+
+// Avance de cada pozo según sus partes diarios: metros perforados y profundidad alcanzada.
+async function withProgress<T extends { id: string }>(rows: T[]) {
+  if (rows.length === 0) return rows;
+  const totals = await prisma.drillingShiftReport.groupBy({
+    by: ["holeId"],
+    where: { holeId: { in: rows.map((row) => row.id) } },
+    _sum: { metersDrilled: true },
+    _max: { toDepth: true },
+  });
+  const byHole = new Map(totals.map((row) => [row.holeId, row]));
+  return rows.map((row) => ({
+    ...row,
+    drilledMeters: byHole.get(row.id)?._sum.metersDrilled ?? 0,
+    currentDepth: byHole.get(row.id)?._max.toDepth ?? 0,
+  }));
+}
+
 export const holes = {
   ...holesBase,
+  async update(id: string, data: Record<string, unknown>, userId?: number) {
+    return holesBase.update(id, await withStatusDates(id, data), userId);
+  },
+  async importMany(campaignId: string, rows: Array<Record<string, unknown>>, userId?: number) {
+    const campaign = await prisma.drillingCampaign.findUnique({ where: { id: campaignId }, select: { id: true } });
+    if (!campaign) throw new HttpError("Programa: no encontrado.", 404);
+    const codes = rows.map((row) => String(row.code).trim());
+    const repeated = codes.filter((code, index) => codes.indexOf(code) !== index);
+    if (repeated.length > 0) throw new HttpError(`Pozos repetidos en el archivo: ${[...new Set(repeated)].join(", ")}`, 400);
+    const existing = await prisma.drillingHole.findMany({ where: { code: { in: codes } }, select: { code: true } });
+    if (existing.length > 0) {
+      throw new HttpError(`Estos pozos ya existen: ${existing.map((hole) => hole.code).join(", ")}`, 409);
+    }
+    const result = await prisma.drillingHole.createMany({
+      data: rows.map((row) => ({
+        ...(withDates(row) as object),
+        code: String(row.code).trim(),
+        campaignId,
+        createdById: userId ?? null,
+        updatedById: userId ?? null,
+      })) as any,
+    });
+    logger.info({ campaignId, count: result.count, userId }, "DrillingHoles imported");
+    return { created: result.count };
+  },
   async list(query: Query) {
     // La categoría (Exploración / Producción) vive en la campaña.
     const { category, ...rest } = query;
-    if (!category) return holesBase.list(rest);
+    if (!category) {
+      const result = await holesBase.list(rest);
+      return { ...result, data: await withProgress(result.data) };
+    }
     const { p, l, skip } = pg(rest);
     const where: Record<string, unknown> = { campaign: { category } };
     if (rest.campaignId) where.campaignId = rest.campaignId;
@@ -187,7 +244,7 @@ export const holes = {
       prisma.drillingHole.findMany({ where, skip, take: l, orderBy: { createdAt: "desc" }, include: HOLE_LIST_INCLUDE }),
       prisma.drillingHole.count({ where }),
     ]);
-    return { data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
+    return { data: await withProgress(data), meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } };
   },
   async remove(id: string) {
     // Los registros del pozo se borran en cascada; solo se permite borrar un pozo vacío.
@@ -207,13 +264,60 @@ export const holes = {
   },
 };
 
-export const shiftReports = holeRecords({
+const shiftReportsBase = holeRecords({
   delegate: () => prisma.drillingShiftReport,
   label: "Parte de perforación",
   orderField: "date",
   computeMeters: true,
   include: { rig: { select: { id: true, code: true } } },
 });
+
+// El parte es de un día: se guarda a las 00:00 UTC de esa fecha (así "un parte por turno y día" es exacto).
+const REPORT_JSON_FIELDS = ["activities", "consumables", "additives", "timeDetail", "incidents"];
+
+function normalizeReportDate(data: Record<string, unknown>) {
+  const next: Record<string, unknown> = { ...data };
+  // Prisma no acepta null en columnas JSON: se usa DbNull para vaciarlas.
+  for (const field of REPORT_JSON_FIELDS) if (next[field] === null) next[field] = Prisma.DbNull;
+  if (typeof next.date !== "string") return next;
+  const date = new Date(next.date);
+  const day = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return { ...next, date: day.toISOString() };
+}
+
+function friendlyShiftError(error: unknown): never {
+  if (error instanceof HttpError && error.statusCode === 409 && error.message.includes("ya existe un registro")) {
+    throw new HttpError("Ya existe un parte para ese pozo, fecha y turno.", 409);
+  }
+  throw error;
+}
+
+export const shiftReports = {
+  ...shiftReportsBase,
+  async createForHole(holeId: string, data: Record<string, unknown>, userId?: number) {
+    // Creación idempotente: el dispositivo envía su propio id; si un reintento llega dos veces, no se duplica.
+    if (typeof data.id === "string") {
+      const existing = await prisma.drillingShiftReport.findUnique({ where: { id: data.id }, include: { rig: { select: { id: true, code: true } } } });
+      if (existing) {
+        if (existing.holeId !== holeId) throw new HttpError("El parte ya existe en otro pozo.", 409);
+        return existing;
+      }
+    }
+    const created = await shiftReportsBase.createForHole(holeId, normalizeReportDate(data), userId).catch(friendlyShiftError);
+    // El primer parte de un pozo proyectado lo pasa a "en proceso".
+    const hole = await prisma.drillingHole.findUnique({ where: { id: holeId }, select: { status: true, startedAt: true } });
+    if (hole?.status === "PLANNED") {
+      await prisma.drillingHole.update({
+        where: { id: holeId },
+        data: { status: "DRILLING", startedAt: hole.startedAt ?? new Date(String(normalizeReportDate(data).date)), updatedById: userId ?? null },
+      });
+    }
+    return created;
+  },
+  async update(id: string, data: Record<string, unknown>, userId?: number) {
+    return shiftReportsBase.update(id, normalizeReportDate(data), userId).catch(friendlyShiftError);
+  },
+};
 export const surveys = holeRecords({ delegate: () => prisma.drillingSurvey, label: "Medición de desviación", orderField: "depth" });
 export const runs = holeRecords({ delegate: () => prisma.drillingRun, label: "Corrida", orderField: "fromDepth" });
 export const coreBoxes = holeRecords({ delegate: () => prisma.drillingCoreBox, label: "Caja de testigo", orderField: "boxNumber" });

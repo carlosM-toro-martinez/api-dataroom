@@ -61,6 +61,7 @@ router.delete("/campaigns/:id", id, handle((req) => service.campaigns.remove(ctx
 // ─── Pozos ───────────────────────────────────────────────────────────────────
 router.get("/holes", vq(schema.holeQuerySchema), handle((req) => service.holes.list(ctx.query(req))));
 router.get("/holes/:id", id, handle((req) => service.holes.summary(ctx.params(req).id)));
+router.post("/holes/import", validate(schema.importHolesSchema), handle((req) => service.holes.importMany(req.body.campaignId, req.body.holes, ctx.uid(req)), 201));
 router.post("/holes", validate(schema.createHoleSchema), handle((req) => service.holes.create(req.body, ctx.uid(req)), 201));
 router.patch("/holes/:id", id, validate(schema.updateHoleSchema), handle((req) => service.holes.update(ctx.params(req).id, req.body, ctx.uid(req))));
 router.delete("/holes/:id", id, handle((req) => service.holes.remove(ctx.params(req).id)));

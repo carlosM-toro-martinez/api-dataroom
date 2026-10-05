@@ -999,6 +999,7 @@ model DrillingCampaign {
   id            String                 @id @default(uuid())
   name          String
   code          String                 @unique
+  area          String?
   category      SampleCategory         @default(EXPLORATION)
   status        DrillingCampaignStatus @default(PLANNED)
   objective     String?
@@ -1077,6 +1078,33 @@ model DrillingShiftReport {
   diameter      String?
   operator      String?
   observations  String?
+  // Formato "Reporte diario de perforación diamantina".
+  reportNumber   String?
+  coreRecovery   Float?
+  waterReturn    String?
+  rockType       String?
+  rigName        String?
+  coreBoxNumber  String?
+  drillingMethod String?
+  rcDiameter     String?
+  casing         String?
+  crownNumber    String?
+  reamerNumber   String?
+  shoeNumber     String?
+  firstHelper    String?
+  secondHelper   String?
+  driver         String?
+  supervisor     String?
+  drillingChief  String?
+  activities     Json?
+  consumables    Json?
+  additives      Json?
+  timeDetail     Json?
+  incidents      Json?
+  reviewStatus   String        @default("PENDING")
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  reviewNotes    String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   createdById   Int?
@@ -1085,6 +1113,7 @@ model DrillingShiftReport {
   rig           DrillingRig?  @relation(fields: [rigId], references: [id])
 
   @@unique([holeId, date, shift])
+  @@index([reviewStatus])
   @@index([holeId])
   @@index([rigId])
   @@index([date])
