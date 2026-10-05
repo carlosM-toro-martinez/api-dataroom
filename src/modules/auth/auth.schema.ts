@@ -5,7 +5,7 @@ export const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   role: z
-    .enum(["ADMIN", "GEOLOGOADMIN", "GEOLOGO", "VISITANTE"])
+    .enum(["ADMIN", "GEOLOGOADMIN", "GEOLOGO", "VISITANTE", "SONDAJES"])
     .default("GEOLOGO"),
 });
 
@@ -31,7 +31,7 @@ export const changePasswordSchema = z.object({
 export const updateUserSchema = z.object({
   nombre: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  role: z.enum(["ADMIN", "GEOLOGOADMIN", "GEOLOGO", "VISITANTE"]).optional(),
+  role: z.enum(["ADMIN", "GEOLOGOADMIN", "GEOLOGO", "VISITANTE", "SONDAJES"]).optional(),
   activo: z.boolean().optional(),
   visitorAccessExpiresAt: z.string().datetime().nullable().optional(),
 });

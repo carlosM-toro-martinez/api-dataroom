@@ -8,6 +8,7 @@ import interiorSampleRoutes from "../modules/interiorSample/interiorSample.route
 import surfaceSampleRoutes from "../modules/surfaceSample/surfaceSample.routes.js";
 import sampleCodeRoutes from "../modules/sampleCodes/sampleCode.routes.js";
 import dispatchBatchRoutes from "../modules/dispatchBatch/dispatchBatch.routes.js";
+import drillingRoutes from "../modules/drilling/drilling.routes.js";
 import mediaRoutes from "../modules/media/media.routes.js";
 
 const router = Router();
@@ -22,6 +23,7 @@ router.use("/interior", interiorSampleRoutes);
 router.use("/surface-sample", surfaceSampleRoutes);
 router.use("/sample-codes", sampleCodeRoutes);
 router.use("/dispatch-batches", dispatchBatchRoutes);
+router.use("/drilling", drillingRoutes);
 router.use("/media", mediaRoutes);
 
 export default router;

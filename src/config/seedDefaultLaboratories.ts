@@ -30,5 +30,12 @@ export async function seedDefaultLaboratories() {
       });
       logger.info({ labId: created.id, name: created.name }, "SurfaceLaboratory sembrado automáticamente");
     }
+
+    // Sondajes: upsert por nombre (único) para no fallar si ya existe con otra abreviatura.
+    await prisma.drillingLaboratory.upsert({
+      where: { name: lab.name },
+      create: { name: lab.name, abbreviation: lab.abbreviation },
+      update: {},
+    });
   }
 }

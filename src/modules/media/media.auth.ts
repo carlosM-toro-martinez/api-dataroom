@@ -5,6 +5,7 @@ import { getJwtSecret } from "../../config/auth.js";
 import { logger } from "../../config/logger.js";
 import { prisma } from "../../config/prisma.js";
 import type { AuthRequest } from "../../middleware/auth.middleware.js";
+import { isOutsideRoleScope } from "../../middleware/auth.middleware.js";
 
 function hashDeviceId(deviceId: string) {
   return crypto.createHash("sha256").update(deviceId).digest("hex");
@@ -33,6 +34,9 @@ export async function authenticateMedia(req: AuthRequest, res: Response, next: N
 
   try {
     const decoded = jwt.verify(normalizeQueryToken(token), getJwtSecret()) as { id: number; role: string };
+    if (isOutsideRoleScope(decoded.role, req.originalUrl)) {
+      return res.status(403).json({ success: false, error: "Tu rol solo tiene acceso al módulo de Sondajes" });
+    }
     if (decoded.role === "VISITANTE") {
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },

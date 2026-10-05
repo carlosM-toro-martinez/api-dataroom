@@ -8,6 +8,15 @@ export interface AuthRequest extends Request {
   user?: { id: number; role: string };
 }
 
+// El rol SONDAJES solo puede usar el módulo de Sondajes (y su sesión).
+const SONDAJES_ALLOWED_PREFIXES = ["/api/drilling", "/api/auth"];
+
+export function isOutsideRoleScope(role: string, originalUrl: string) {
+  if (role !== "SONDAJES") return false;
+  const path = originalUrl.split("?")[0] ?? "";
+  return !SONDAJES_ALLOWED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
 function hashDeviceId(deviceId: string) {
   return crypto.createHash("sha256").update(deviceId).digest("hex");
 }
@@ -20,6 +29,9 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
 
   try {
     const decoded = jwt.verify(token, getJwtSecret()) as { id: number; role: string };
+    if (isOutsideRoleScope(decoded.role, req.originalUrl)) {
+      return res.status(403).json({ success: false, error: "Tu rol solo tiene acceso al módulo de Sondajes" });
+    }
     if (decoded.role === "VISITANTE") {
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },
