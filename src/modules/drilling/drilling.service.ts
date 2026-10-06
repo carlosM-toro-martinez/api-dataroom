@@ -127,6 +127,13 @@ function holeRecords(config: CrudConfig & { orderField: string; computeMeters?: 
   };
 }
 
+export const personnel = crud({
+  delegate: () => prisma.drillingPersonnel,
+  label: "Personal",
+  searchFields: ["name"],
+  orderBy: { name: "asc" },
+});
+
 export const contractors = crud({
   delegate: () => prisma.drillingContractor,
   label: "Contratista",

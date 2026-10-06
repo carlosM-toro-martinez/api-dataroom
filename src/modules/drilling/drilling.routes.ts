@@ -36,6 +36,12 @@ const holeId = vp(schema.holeIdSchema);
 
 router.get("/summary", handle(() => service.getDrillingSummary()));
 
+// ─── Personal de perforación ─────────────────────────────────────────────────
+router.get("/personnel", vq(schema.listQuerySchema), handle((req) => service.personnel.list(ctx.query(req))));
+router.post("/personnel", validate(schema.createPersonnelSchema), handle((req) => service.personnel.create(req.body, ctx.uid(req)), 201));
+router.patch("/personnel/:id", id, validate(schema.updatePersonnelSchema), handle((req) => service.personnel.update(ctx.params(req).id, req.body, ctx.uid(req))));
+router.delete("/personnel/:id", id, handle((req) => service.personnel.remove(ctx.params(req).id)));
+
 // ─── Catálogos ───────────────────────────────────────────────────────────────
 const catalogs = [
   ["contractors", service.contractors, schema.createContractorSchema, schema.updateContractorSchema],

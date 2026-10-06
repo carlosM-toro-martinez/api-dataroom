@@ -50,6 +50,18 @@ const partialDepthRange = <T extends z.ZodRawShape>(shape: T) =>
       path: ["toDepth"],
     });
 
+// ─── Personal de perforación ─────────────────────────────────────────────────
+const PERSONNEL_ROLES = ["operator", "firstHelper", "secondHelper", "driver", "supervisor", "drillingChief"] as const;
+const PERSONNEL_SHIFTS = ["DAY", "NIGHT", "BOTH"] as const;
+
+export const createPersonnelSchema = z.object({
+  name: text,
+  role: z.enum(PERSONNEL_ROLES),
+  shift: z.enum(PERSONNEL_SHIFTS),
+  active: z.boolean().optional(),
+}).strict();
+export const updatePersonnelSchema = createPersonnelSchema.partial().strict();
+
 // ─── Catálogos ───────────────────────────────────────────────────────────────
 export const listQuerySchema = pagination.extend({ search: optionalText });
 
