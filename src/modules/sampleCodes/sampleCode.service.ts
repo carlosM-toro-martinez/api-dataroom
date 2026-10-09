@@ -40,47 +40,24 @@ export function sampleCodeFor(category: SampleCategory, sequentialNumber: number
   return `${prefix}-${String(sequentialNumber).padStart(4, "0")}`;
 }
 
+// Codes are printed on talons and remission notes, so a number is never reused or shifted:
+// deleting a sample leaves a gap. The Postgres sequence also survives deleting the last sample.
+const CATEGORY_SEQUENCES: Record<SampleCategory, string> = {
+  EXPLORATION: "sample_code_exploration_seq",
+  PRODUCTION: "sample_code_production_seq"
+};
+
+async function nextSequentialNumber(tx: Tx, category: SampleCategory) {
+  const rows = await tx.$queryRaw<Array<{ n: bigint }>>`SELECT nextval(${CATEGORY_SEQUENCES[category]}::regclass) AS n`;
+  return Number(rows[0]!.n);
+}
+
 export async function allocateGlobalSampleCode(tx: Tx, category: SampleCategory) {
-  await lockCategory(tx, category);
-
-  const [interiorMax, surfaceMax] = await Promise.all([
-    tx.interiorSample.aggregate({ where: { category }, _max: { sequentialNumber: true } }),
-    tx.surfaceSample.aggregate({ where: { category }, _max: { sequentialNumber: true } })
-  ]);
-  const sequentialNumber = Math.max(
-    interiorMax._max.sequentialNumber ?? 0,
-    surfaceMax._max.sequentialNumber ?? 0
-  ) + 1;
-
+  const sequentialNumber = await nextSequentialNumber(tx, category);
   return {
     sequentialNumber,
     code: sampleCodeFor(category, sequentialNumber)
   };
-}
-
-export async function compactGlobalSampleCodesAfterDelete(
-  tx: Tx,
-  category: SampleCategory,
-  deletedSequentialNumber: number,
-  userId?: number
-) {
-  await lockCategory(tx, category);
-  const rows = await getGlobalSampleRows(tx, category);
-  const laterRows = rows.filter((row) => row.sequentialNumber > deletedSequentialNumber);
-  await temporarilyRenameRows(tx, laterRows);
-
-  for (const row of laterRows) {
-    const nextSequentialNumber = row.sequentialNumber - 1;
-    await updateSampleCode(tx, row, nextSequentialNumber, userId);
-  }
-
-  return laterRows.map((row) => ({
-    ...row,
-    previousCode: row.code,
-    previousSequentialNumber: row.sequentialNumber,
-    nextSequentialNumber: row.sequentialNumber - 1,
-    nextCode: sampleCodeFor(category, row.sequentialNumber - 1)
-  }));
 }
 
 export const sampleCodeService = {
@@ -98,23 +75,23 @@ export const sampleCodeService = {
 
         for (const category of ["EXPLORATION", "PRODUCTION"] as const) {
           await lockCategory(tx, category);
-          let nextSequentialNumber = getMaxSequentialNumber(beforeRows, category) + 1;
-          const planned = duplicateReport.duplicates.flatMap((group) => {
-            const duplicateRows = group.samples
+          const duplicateRows = duplicateReport.duplicates.flatMap((group) =>
+            group.samples
               .filter((row) => row.category === category)
-              .sort(compareSampleRowsForRenumbering);
-            return duplicateRows.slice(1).map((row) => {
-              const assignedNumber = nextSequentialNumber;
-              nextSequentialNumber += 1;
-              return {
-                ...row,
-                previousCode: row.code,
-                previousSequentialNumber: row.sequentialNumber,
-                nextCode: sampleCodeFor(category, assignedNumber),
-                nextSequentialNumber: assignedNumber
-              };
+              .sort(compareSampleRowsForRenumbering)
+              .slice(1)
+          );
+          const planned: SampleCodeChange[] = [];
+          for (const row of duplicateRows) {
+            const assignedNumber = await nextSequentialNumber(tx, category);
+            planned.push({
+              ...row,
+              previousCode: row.code,
+              previousSequentialNumber: row.sequentialNumber,
+              nextCode: sampleCodeFor(category, assignedNumber),
+              nextSequentialNumber: assignedNumber
             });
-          });
+          }
 
           await temporarilyRenameRows(tx, planned);
           for (const change of planned) {
@@ -253,12 +230,6 @@ function compareCode(a: string, b: string) {
 function codeNumber(code: string) {
   const match = code.match(/\d+/);
   return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
-}
-
-function getMaxSequentialNumber(rows: SampleCodeRow[], category: SampleCategory) {
-  return rows
-    .filter((row) => row.category === category)
-    .reduce((max, row) => Math.max(max, row.sequentialNumber), 0);
 }
 
 async function normalizeRevertChanges(tx: Tx, changes: LooseSampleCodeChange[]) {

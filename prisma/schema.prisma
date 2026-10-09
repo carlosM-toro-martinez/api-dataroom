@@ -741,7 +741,7 @@ model InteriorDispatchItem {
   createdById       Int?
   updatedById       Int?
   dispatch          InteriorSampleDispatch    @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
-  sample            InteriorSample            @relation(fields: [interiorSampleId], references: [id], onDelete: Cascade)
+  sample            InteriorSample            @relation(fields: [interiorSampleId], references: [id], onDelete: Restrict)
   requestedElements InteriorDispatchElement[]
 
   @@unique([dispatchId, interiorSampleId])
@@ -950,7 +950,7 @@ model SurfaceDispatchItem {
   createdById       Int?
   updatedById       Int?
   dispatch          SurfaceSampleDispatch    @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
-  sample            SurfaceSample            @relation(fields: [surfaceSampleId], references: [id], onDelete: Cascade)
+  sample            SurfaceSample            @relation(fields: [surfaceSampleId], references: [id], onDelete: Restrict)
   requestedElements SurfaceDispatchElement[]
 
   @@unique([dispatchId, surfaceSampleId])

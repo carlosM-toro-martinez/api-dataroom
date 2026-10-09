@@ -1,7 +1,7 @@
 import { prisma } from "../../config/prisma.js";
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
-import { allocateGlobalSampleCode, compactGlobalSampleCodesAfterDelete } from "../sampleCodes/sampleCode.service.js";
+import { allocateGlobalSampleCode } from "../sampleCodes/sampleCode.service.js";
 import { assertSampleNameMatchesLocation } from "../sampleCodes/sampleName.js";
 import type {
   CreateInteriorAreaDTO,
@@ -605,9 +605,9 @@ export const interiorSampleService = {
       where: { id },
       select: {
         id: true,
-        category: true,
-        sequentialNumber: true,
+        code: true,
         createdById: true,
+        dispatchItems: { select: { dispatch: { select: { folio: true } } }, take: 1 },
       },
     });
     if (!sample) throw new HttpError("Interior sample not found", 404);
@@ -615,14 +615,16 @@ export const interiorSampleService = {
     if (!canDelete) {
       throw new HttpError("Solo ADMIN o la persona que registró la muestra puede eliminarla", 403);
     }
+    const lot = sample.dispatchItems[0];
+    if (lot) {
+      throw new HttpError(`La muestra ${sample.code} está en el lote con folio N° ${lot.dispatch.folio} y no se puede eliminar.`, 409);
+    }
 
     return prisma.$transaction(async (tx) => {
       await tx.interiorSampleResult.deleteMany({ where: { interiorSampleId: id } });
       await tx.interiorLabAssignment.deleteMany({ where: { interiorSampleId: id } });
       const deleted = await tx.interiorSample.delete({ where: { id } });
-      const renumbered = await compactGlobalSampleCodesAfterDelete(tx, sample.category, sample.sequentialNumber, userId);
-
-      logger.info({ sampleId: id, category: sample.category, renumbered: renumbered.length, userId }, "InteriorSample deleted and global sequence compacted");
+      logger.info({ sampleId: id, code: sample.code, userId }, "InteriorSample deleted");
       return deleted;
     });
   },
