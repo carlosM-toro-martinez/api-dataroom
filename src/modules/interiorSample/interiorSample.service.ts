@@ -1,7 +1,7 @@
 import { prisma } from "../../config/prisma.js";
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
-import { allocateGlobalSampleCode } from "../sampleCodes/sampleCode.service.js";
+import { allocateGlobalSampleCode, assertCategoryUnchanged } from "../sampleCodes/sampleCode.service.js";
 import { assertSampleNameMatchesLocation } from "../sampleCodes/sampleName.js";
 import type {
   CreateInteriorAreaDTO,
@@ -580,6 +580,7 @@ export const interiorSampleService = {
 
   async updateInteriorSample(id: string, data: UpdateInteriorSampleDTO, userId?: number) {
     const current = await this.getInteriorSampleById(id);
+    assertCategoryUnchanged(current, data.category);
     if (data.name !== undefined && data.name !== current.name) {
       assertSampleNameMatchesLocation(data.name, { area: current.labor.level.area, level: current.labor.level, labor: current.labor });
     }
@@ -720,6 +721,7 @@ export const interiorSampleService = {
 
   async updateInteriorSampleWithResults(id: string, data: UpdateInteriorSampleWithResultsDTO, userId?: number) {
     const current = await this.getInteriorSampleById(id);
+    assertCategoryUnchanged(current, data.category);
     if (data.name !== undefined && data.name !== current.name) {
       assertSampleNameMatchesLocation(data.name, { area: current.labor.level.area, level: current.labor.level, labor: current.labor });
     }

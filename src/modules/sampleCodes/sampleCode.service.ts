@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
+import { HttpError } from "../../errors/http.error.js";
 
 type SampleCategory = "EXPLORATION" | "PRODUCTION";
 type SampleModule = "interior" | "surface";
@@ -50,6 +51,16 @@ const CATEGORY_SEQUENCES: Record<SampleCategory, string> = {
 async function nextSequentialNumber(tx: Tx, category: SampleCategory) {
   const rows = await tx.$queryRaw<Array<{ n: bigint }>>`SELECT nextval(${CATEGORY_SEQUENCES[category]}::regclass) AS n`;
   return Number(rows[0]!.n);
+}
+
+// The prefix (EX-/M-) and number come from the category, so it is fixed once the code is assigned.
+export function assertCategoryUnchanged(current: { category: SampleCategory; code: string }, next?: SampleCategory) {
+  if (next !== undefined && next !== current.category) {
+    throw new HttpError(
+      `La muestra ${current.code} no puede cambiar de categoría porque su código ya está asignado. Elimínala y regístrala de nuevo en la categoría correcta.`,
+      409
+    );
+  }
 }
 
 export async function allocateGlobalSampleCode(tx: Tx, category: SampleCategory) {

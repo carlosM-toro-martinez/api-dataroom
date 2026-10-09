@@ -1,7 +1,7 @@
 import { prisma } from "../../config/prisma.js";
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
-import { allocateGlobalSampleCode } from "../sampleCodes/sampleCode.service.js";
+import { allocateGlobalSampleCode, assertCategoryUnchanged } from "../sampleCodes/sampleCode.service.js";
 import { assertSampleNameMatchesLocation } from "../sampleCodes/sampleName.js";
 import type {
   CreateSurfaceAreaDTO,
@@ -664,6 +664,7 @@ export const surfaceSampleService = {
 
   async updateSurfaceSample(id: string, data: UpdateSurfaceSampleDTO, userId?: number) {
     const current = await this.getSurfaceSampleById(id);
+    assertCategoryUnchanged(current, data.category);
     if (data.name !== undefined && data.name !== current.name) {
       assertSampleNameMatchesLocation(data.name, { area: current.labor.level.area, level: current.labor.level, labor: current.labor });
     }
@@ -803,6 +804,7 @@ export const surfaceSampleService = {
 
   async updateSurfaceSampleWithResults(id: string, data: UpdateSurfaceSampleWithResultsDTO, userId?: number) {
     const current = await this.getSurfaceSampleById(id);
+    assertCategoryUnchanged(current, data.category);
     if (data.name !== undefined && data.name !== current.name) {
       assertSampleNameMatchesLocation(data.name, { area: current.labor.level.area, level: current.labor.level, labor: current.labor });
     }
