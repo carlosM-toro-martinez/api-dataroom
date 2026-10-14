@@ -314,3 +314,109 @@ export const createResultSchema = z.object({
 
 export type CreateDispatchDTO = z.infer<typeof createDispatchSchema>;
 export type CreateResultDTO = z.infer<typeof createResultSchema>;
+
+// ─── Geología de sondajes ────────────────────────────────────────────────────
+// Mismos campos que la hoja 01_RESUMEN del Excel de geología.
+const coordinate = z.number().nullable().optional();
+const geologyReportFields = {
+  date: datetime,
+  plannedEast: coordinate,
+  plannedNorth: coordinate,
+  plannedElevation: coordinate,
+  executedEast: coordinate,
+  executedNorth: coordinate,
+  executedElevation: coordinate,
+  rigName: shortText,
+  diameter: shortText,
+  casing: shortText,
+  azimuth: shortText,
+  dip: shortText,
+  programmedDepth: shortText,
+  startDate: datetime.nullable().optional(),
+  endStatus: shortText,
+  geologists: z.string().trim().max(300).nullable().optional(),
+  geologySummary: z.string().trim().max(20000).nullable().optional(),
+  operationalNotes: z.string().trim().max(8000).nullable().optional(),
+};
+// En el Excel un día sin avance es válido (profundidad actual = anterior); solo no puede retroceder.
+const notBackwards = { message: "La profundidad actual no puede ser menor que la anterior.", path: ["toDepth"] };
+// id opcional generado en el dispositivo (reportes registrados sin conexión).
+export const createGeologyReportSchema = z
+  .object({ id: z.string().uuid().optional(), fromDepth: depth, toDepth: depth, ...geologyReportFields })
+  .strict()
+  .refine((value) => value.toDepth >= value.fromDepth, notBackwards);
+export const updateGeologyReportSchema = z
+  .object({ fromDepth: depth.optional(), toDepth: depth.optional(), ...geologyReportFields, date: datetime.optional() })
+  .strict()
+  .refine((value) => value.fromDepth === undefined || value.toDepth === undefined || value.toDepth >= value.fromDepth, notBackwards);
+
+const code = z.string().trim().max(40).nullable().optional();
+const logRowSchema = z
+  .object({
+    fromDepth: depth,
+    toDepth: depth,
+    dataSet: code,
+    lithology: code,
+    texture: code,
+    support: code,
+    alteration1: code,
+    alteration1Int: z.number().int().min(0).max(99).nullable().optional(),
+    alteration2: code,
+    alteration2Int: z.number().int().min(0).max(99).nullable().optional(),
+    minerals: z
+      .array(z.object({ mineral: z.string().trim().min(1).max(40), pct: z.string().trim().max(20).nullable().optional(), style: code }).strict())
+      .max(8)
+      .nullable()
+      .optional(),
+    structures: z
+      .array(z.object({ type: z.string().trim().min(1).max(40), angle: z.number().nullable().optional(), fracCount: z.number().min(0).nullable().optional() }).strict())
+      .max(6)
+      .nullable()
+      .optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    loggedBy: shortText,
+    loggedAt: datetime.nullable().optional(),
+  })
+  .strict()
+  .refine((row) => row.toDepth > row.fromDepth, { message: "La profundidad final debe ser mayor que la inicial.", path: ["toDepth"] });
+
+// El logueo se reemplaza completo (así funciona igual al importar el Excel y al editar sin conexión).
+export const replaceGeologyLogSchema = z.object({ rows: z.array(logRowSchema).max(5000) }).strict();
+
+const PHOTO_KINDS = ["CORE_BOX", "DETAIL", "SECTION", "OTHER"] as const;
+const emptyToUndefined = (value: unknown) => (value === "" || value === "null" ? undefined : value);
+const formNumber = z.preprocess(emptyToUndefined, z.coerce.number().optional());
+const formInt = z.preprocess(emptyToUndefined, z.coerce.number().int().optional());
+const photoMetaFields = {
+  kind: z.enum(PHOTO_KINDS).optional(),
+  caption: z.preprocess(emptyToUndefined, z.string().trim().max(300).optional()),
+  reportId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  boxFrom: formInt,
+  boxTo: formInt,
+  fromDepth: formNumber,
+  toDepth: formNumber,
+  takenAt: z.preprocess(emptyToUndefined, datetime.optional()),
+};
+// Campos multipart (texto) que acompañan a la foto.
+export const createPhotoSchema = z
+  .object({
+    id: z.string().uuid(),
+    ...photoMetaFields,
+    width: formInt,
+    height: formInt,
+    contentHash: z.preprocess(emptyToUndefined, z.string().regex(/^[a-f0-9]{64}$/).optional()),
+  })
+  .strict();
+export const updatePhotoSchema = z
+  .object({
+    kind: z.enum(PHOTO_KINDS).optional(),
+    caption: z.string().trim().max(300).nullable().optional(),
+    reportId: z.string().uuid().nullable().optional(),
+    boxFrom: z.number().int().nullable().optional(),
+    boxTo: z.number().int().nullable().optional(),
+    fromDepth: z.number().min(0).nullable().optional(),
+    toDepth: z.number().min(0).nullable().optional(),
+    takenAt: datetime.nullable().optional(),
+  })
+  .strict();
+export const photoFileQuerySchema = z.object({ variant: z.enum(["thumb", "full"]).default("full") });

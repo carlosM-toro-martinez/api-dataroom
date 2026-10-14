@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { authController } from "./auth.controller.js";
 import { validate } from "../../middleware/validate.middleware.js";
-import { authenticate, authorize } from "../../middleware/auth.middleware.js";
+import { authenticate } from "../../middleware/auth.middleware.js";
+import { requirePermission } from "../../middleware/permission.middleware.js";
 import {
   loginSchema,
   registerSchema,
@@ -17,10 +18,11 @@ import {
 
 const router = Router();
 
-router.post("/register", validate(registerSchema), authController.register);
+router.post("/register", authenticate, requirePermission("usuarios", "create"), validate(registerSchema), authController.register);
 router.post("/login", validate(loginSchema), authController.login);
 router.post("/refresh", authController.refresh);
 router.post("/logout", authenticate, authController.logout);
+router.get("/me", authenticate, authController.me);
 router.post(
   "/data-room/access-requests",
   validate(dataRoomAccessRequestSchema),
@@ -29,27 +31,27 @@ router.post(
 router.get(
   "/data-room/access-requests",
   authenticate,
-  authorize("ADMIN"),
+  requirePermission("solicitudes", "read"),
   authController.listarSolicitudesDataRoom,
 );
 router.post(
   "/data-room/access-requests/:id/approve",
   authenticate,
-  authorize("ADMIN"),
+  requirePermission("solicitudes", "update"),
   validate(approveDataRoomAccessRequestSchema),
   authController.aprobarSolicitudDataRoom,
 );
 router.post(
   "/data-room/access-requests/:id/reject",
   authenticate,
-  authorize("ADMIN"),
+  requirePermission("solicitudes", "update"),
   validate(rejectDataRoomAccessRequestSchema),
   authController.rechazarSolicitudDataRoom,
 );
 router.post(
   "/data-room/access-requests/:id/cancel",
   authenticate,
-  authorize("ADMIN"),
+  requirePermission("solicitudes", "update"),
   validate(cancelDataRoomAccessRequestSchema),
   authController.cancelarSolicitudDataRoom,
 );
@@ -57,13 +59,13 @@ router.post(
 router.get(
   "/users",
   authenticate,
-  authorize("ADMIN"),
+  requirePermission("usuarios", "read"),
   authController.listarUsuarios,
 );
 router.put(
   "/users/:id",
   authenticate,
-  authorize("ADMIN"),
+  requirePermission("usuarios", "update"),
   validate(updateUserSchema),
   authController.actualizarUsuario,
 );

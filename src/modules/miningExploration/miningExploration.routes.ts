@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { miningExplorationController } from "./miningExploration.controller.js";
 import { authenticate } from "../../middleware/auth.middleware.js";
+import { HIERARCHY_MODULES, requirePermission } from "../../middleware/permission.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import { z } from "zod";
 import {
@@ -85,12 +86,7 @@ const validateParams = (schema: any) => (req: any, res: any, next: any) => {
 
 const router = Router();
 router.use(authenticate);
-router.use((req: any, res: any, next: any) => {
-  if (req.user?.role === "VISITANTE" && req.method !== "GET") {
-    return res.status(403).json({ success: false, error: "Acceso visitante solo lectura" });
-  }
-  next();
-});
+router.use(requirePermission(HIERARCHY_MODULES));
 
 router.get("/projects", validateQuery(projectQuerySchema), miningExplorationController.getProjects);
 router.get("/projects/:id", validateParams(idSchema), miningExplorationController.getProjectById);

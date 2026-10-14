@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { authenticate, authorize } from "../../middleware/auth.middleware.js";
+import { authenticate } from "../../middleware/auth.middleware.js";
+import { requirePermission } from "../../middleware/permission.middleware.js";
 import { sampleCodeController } from "./sampleCode.controller.js";
 
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize("ADMIN"));
 
-router.get("/duplicates", sampleCodeController.getDuplicates);
-router.post("/repair", sampleCodeController.repair);
-router.post("/revert", sampleCodeController.revert);
+router.get("/duplicates", requirePermission("elementos"), sampleCodeController.getDuplicates);
+router.post("/repair", requirePermission("elementos", "update"), sampleCodeController.repair);
+router.post("/revert", requirePermission("elementos", "update"), sampleCodeController.revert);
 
 export default router;

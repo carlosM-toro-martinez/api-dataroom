@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { interiorSampleController } from "./interiorSample.controller.js";
 import { authenticate } from "../../middleware/auth.middleware.js";
+import { requirePermission, sampleModules } from "../../middleware/permission.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import {
   createInteriorAreaSchema,
@@ -53,12 +54,7 @@ const vp = (schema: any) => (req: any, res: any, next: any) => {
 
 const router = Router();
 router.use(authenticate);
-router.use((req: any, res: any, next: any) => {
-  if (req.user?.role === "VISITANTE" && req.method !== "GET") {
-    return res.status(403).json({ success: false, error: "Acceso visitante solo lectura" });
-  }
-  next();
-});
+router.use(requirePermission(sampleModules));
 
 // ─── InteriorArea ─────────────────────────────────────────────────────────────
 router.get("/areas", vq(interiorAreaQuerySchema), interiorSampleController.getInteriorAreas);

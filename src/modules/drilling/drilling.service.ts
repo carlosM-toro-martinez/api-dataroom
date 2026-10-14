@@ -257,11 +257,11 @@ export const holes = {
     // Los registros del pozo se borran en cascada; solo se permite borrar un pozo vacío.
     const counts = await prisma.drillingHole.findUnique({
       where: { id },
-      select: { _count: { select: { shiftReports: true, surveys: true, runs: true, coreBoxes: true, logIntervals: true, samples: true } } },
+      select: { _count: { select: { shiftReports: true, surveys: true, runs: true, coreBoxes: true, logIntervals: true, samples: true, geologyReports: true, photos: true } } },
     });
     if (!counts) throw new HttpError("Pozo: no encontrado.", 404);
     const total = Object.values(counts._count).reduce((sum, value) => sum + value, 0);
-    if (total > 0) throw new HttpError("Pozo: tiene registros asociados (partes, muestras, logueo...). Elimínalos antes.", 409);
+    if (total > 0) throw new HttpError("Pozo: tiene registros asociados (partes, muestras, geología...). Elimínalos antes.", 409);
     return holesBase.remove(id);
   },
   async summary(id: string) {

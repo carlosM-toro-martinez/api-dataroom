@@ -18,6 +18,7 @@ import type {
 import { logger } from "../../config/logger.js";
 import { HttpError } from "../../errors/http.error.js";
 import { getJwtSecret, getRefreshTokenSecret } from "../../config/auth.js";
+import { getRolePermissions, rolesService } from "../roles/roles.service.js";
 
 const ACCESS_TOKEN_EXPIRY = "8h";
 const REFRESH_TOKEN_EXPIRY = "7d";
@@ -40,6 +41,17 @@ function hashDeviceId(deviceId: string) {
 
 function buildTemporaryPassword() {
   return crypto.randomBytes(VISITOR_PASSWORD_BYTES).toString("base64url");
+}
+
+async function sessionUser(user: { id: number; nombre: string; email: string; role: string; activo: boolean }) {
+  return {
+    id: user.id,
+    nombre: user.nombre,
+    email: user.email,
+    role: user.role,
+    activo: user.activo,
+    permissions: await getRolePermissions(user.role),
+  };
 }
 
 function normalizeEmail(email: string) {
@@ -69,7 +81,8 @@ async function sendVisitorAccessEmail(input: {
 }
 
 export const authService = {
-  async register(data: RegisterDTO) {
+  async register(data: RegisterDTO, requesterRole?: string) {
+    await rolesService.assertAssignable(data.role, requesterRole);
     const email = normalizeEmail(data.email);
     const existing = await prisma.user.findFirst({ where: userEmailWhere(email), select: { id: true } });
     if (existing) throw new HttpError("Email ya registrado", 409);
@@ -157,8 +170,17 @@ export const authService = {
     return {
       accessToken,
       refreshToken,
-      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, activo: user.activo },
+      user: await sessionUser(user),
     };
+  },
+
+  async me(userId: number) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, nombre: true, email: true, role: true, activo: true },
+    });
+    if (!user) throw new HttpError("Usuario no encontrado", 404);
+    return sessionUser(user);
   },
 
   async getAllUsers() {
@@ -178,7 +200,8 @@ export const authService = {
     });
   },
 
-  async updateUser(id: number, data: UpdateUserDTO) {
+  async updateUser(id: number, data: UpdateUserDTO, requesterRole?: string) {
+    if (data.role !== undefined) await rolesService.assertAssignable(data.role, requesterRole);
     const updateData: Record<string, unknown> = {};
     if (data.nombre !== undefined) updateData["nombre"] = data.nombre.trim();
     if (data.email !== undefined) {
@@ -458,7 +481,7 @@ export const authService = {
       logger.info({ userId: user.id }, "Access token renovado");
       return {
         accessToken: newAccessToken,
-        user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, activo: user.activo },
+        user: await sessionUser(user),
       };
     } catch (error) {
       if (error instanceof HttpError) throw error;

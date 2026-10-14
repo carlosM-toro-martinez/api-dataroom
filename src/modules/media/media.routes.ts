@@ -1,7 +1,7 @@
 import fsp from "node:fs/promises";
 import { Router } from "express";
 import multer from "multer";
-import { authorize } from "../../middleware/auth.middleware.js";
+import { requirePermission } from "../../middleware/permission.middleware.js";
 import { authenticateMedia } from "./media.auth.js";
 import { dataRoomMediaRoot } from "./media.paths.js";
 import { mediaController } from "./media.controller.js";
@@ -28,8 +28,9 @@ const upload = multer({
 });
 
 router.use(authenticateMedia);
+router.use(requirePermission("dataRoom"));
 router.get("/data-room", mediaController.listDataRoomMedia);
 router.get("/data-room/:key", mediaController.streamDataRoomMedia);
-router.post("/data-room/:key", authorize("ADMIN"), upload.single("file"), mediaController.uploadDataRoomMedia);
+router.post("/data-room/:key", upload.single("file"), mediaController.uploadDataRoomMedia);
 
 export default router;

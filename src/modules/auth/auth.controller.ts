@@ -5,8 +5,18 @@ import type { AuthRequest } from "../../middleware/auth.middleware.js";
 export const authController = {
   async register(req: AuthRequest, res: Response) {
     try {
-      const user = await authService.register(req.body);
+      const user = await authService.register(req.body, req.user?.role);
       res.status(201).json({ success: true, data: user });
+    } catch (error) {
+      const status = (error as any).statusCode || 400;
+      res.status(status).json({ success: false, message: (error as Error).message });
+    }
+  },
+
+  async me(req: AuthRequest, res: Response) {
+    try {
+      const user = await authService.me(req.user!.id);
+      res.json({ success: true, data: user });
     } catch (error) {
       const status = (error as any).statusCode || 400;
       res.status(status).json({ success: false, message: (error as Error).message });
@@ -67,7 +77,7 @@ export const authController = {
     try {
       const id = Number(req.params["id"]);
       if (!id) return res.status(400).json({ success: false, message: "ID requerido" });
-      const user = await authService.updateUser(id, req.body);
+      const user = await authService.updateUser(id, req.body, req.user?.role);
       res.json({ success: true, data: user });
     } catch (error) {
       const status = (error as any).statusCode || 400;

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { authenticate } from "../../middleware/auth.middleware.js";
+import { HIERARCHY_MODULES, requirePermission } from "../../middleware/permission.middleware.js";
 import { miningExcelController } from "./miningExcel.controller.js";
 
 const upload = multer({
@@ -22,6 +23,7 @@ const upload = multer({
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePermission(HIERARCHY_MODULES, "create"));
 
 // POST /api/imports/mining-excel/validate  — dry run
 router.post(

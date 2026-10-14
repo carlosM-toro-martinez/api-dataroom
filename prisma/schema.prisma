@@ -11,12 +11,26 @@ datasource db {
 // AUTH
 ////////////////////////////////
 
+// Rol con permisos por módulo: { "<módulo>": ["create","read","update","delete"] }.
+// Los roles de sistema (ADMIN, VISITANTE, ...) no se pueden borrar; ADMIN siempre tiene todo.
+model Role {
+  key         String   @id
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  permissions Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
 model User {
   id                 Int                      @id @default(autoincrement())
   nombre             String
   email              String                   @unique
   password           String
-  role               ExploRole                @default(GEOLOGO)
+  role               String                   @default("GEOLOGO")
+  roleRef            Role                     @relation(fields: [role], references: [key], onUpdate: Cascade)
   activo             Boolean                  @default(true)
   createdAt          DateTime                 @default(now())
   resetToken         String?
@@ -1067,6 +1081,9 @@ model DrillingHole {
   runs             DrillingRun[]
   coreBoxes        DrillingCoreBox[]
   logIntervals     DrillingLogInterval[]
+  geologyReports   DrillingGeologyReport[]
+  photos           DrillingPhoto[]
+  photoCounter     DrillingPhotoCounter?
   samples          DrillingSample[]
 
   @@index([campaignId])
@@ -1190,6 +1207,92 @@ model DrillingCoreBox {
   @@index([holeId])
 }
 
+// Reporte geológico diario (equipo de geología): un reporte por pozo y día.
+model DrillingGeologyReport {
+  id               String          @id @default(uuid())
+  holeId           String
+  date             DateTime
+  fromDepth        Float
+  toDepth          Float
+  // 1. Información del sondaje (tal como se escribe en la hoja 01_RESUMEN del Excel).
+  plannedEast      Float?
+  plannedNorth     Float?
+  plannedElevation Float?
+  executedEast     Float?
+  executedNorth    Float?
+  executedElevation Float?
+  rigName          String?
+  diameter         String?
+  casing           String?
+  azimuth          String?
+  dip              String?
+  programmedDepth  String?
+  startDate        DateTime?
+  endStatus        String?
+  geologists       String?
+  geologySummary   String?
+  operationalNotes String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  createdById      Int?
+  updatedById      Int?
+  hole             DrillingHole    @relation(fields: [holeId], references: [id], onDelete: Cascade)
+  photos           DrillingPhoto[]
+
+  @@unique([holeId, date])
+  @@index([holeId])
+}
+
+// Fotografías de testigo / sección geológica. Los archivos viven en MEDIA_ROOT/sondajes/<holeId>/.
+model DrillingPhoto {
+  id          String                 @id
+  // Código único e inmutable, correlativo por pozo: <pozo>-F0001. Lo asigna el servidor.
+  code        String                 @unique
+  sequence    Int
+  holeId      String
+  reportId    String?
+  kind        DrillingPhotoKind      @default(CORE_BOX)
+  caption     String?
+  boxFrom     Int?
+  boxTo       Int?
+  fromDepth   Float?
+  toDepth     Float?
+  takenAt     DateTime?
+  fileName    String
+  thumbName   String
+  // SHA-256 de la imagen original: la misma foto no se guarda dos veces en un pozo.
+  contentHash String?
+  mimeType    String
+  sizeBytes   Int
+  width       Int?
+  height      Int?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  createdById Int?
+  updatedById Int?
+  hole        DrillingHole           @relation(fields: [holeId], references: [id], onDelete: Cascade)
+  report      DrillingGeologyReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  @@unique([holeId, sequence])
+  @@unique([holeId, contentHash])
+  @@index([holeId])
+  @@index([reportId])
+}
+
+// Último número de foto usado en cada pozo. Nunca baja: el código de una foto borrada no se reutiliza.
+model DrillingPhotoCounter {
+  holeId String       @id
+  last   Int          @default(0)
+  hole   DrillingHole @relation(fields: [holeId], references: [id], onDelete: Cascade)
+}
+
+enum DrillingPhotoKind {
+  CORE_BOX
+  DETAIL
+  SECTION
+  OTHER
+}
+
 // Logueo geológico por tramo.
 model DrillingLogInterval {
   id             String       @id @default(uuid())
@@ -1203,6 +1306,16 @@ model DrillingLogInterval {
   description    String?
   loggedBy       String?
   loggedAt       DateTime?
+  // Quick log (formato del equipo de geología): códigos por tramo.
+  dataSet        String?
+  texture        String?
+  support        String?
+  alteration1    String?
+  alteration1Int Int?
+  alteration2    String?
+  alteration2Int Int?
+  minerals       Json?        // [{ mineral, pct, style }]
+  structures     Json?        // [{ type, angle, fracCount }]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   createdById    Int?
@@ -1324,14 +1437,6 @@ model DrillingSampleResult {
 ////////////////////////////////
 // ENUMS
 ////////////////////////////////
-
-enum ExploRole {
-  ADMIN
-  GEOLOGOADMIN
-  GEOLOGO
-  VISITANTE
-  SONDAJES
-}
 
 enum DataRoomRequestStatus {
   PENDING

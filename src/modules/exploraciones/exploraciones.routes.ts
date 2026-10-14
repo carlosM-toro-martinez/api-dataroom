@@ -7,10 +7,12 @@ import {
   getMuestrasQuerySchema,
 } from "./exploraciones.schema.js";
 import { authenticate } from "../../middleware/auth.middleware.js";
+import { requirePermission, sampleModules } from "../../middleware/permission.middleware.js";
 
 const router = Router();
 
 router.use(authenticate);
+router.use(requirePermission(sampleModules));
 
 router.post("/muestras", validate(createMuestraSchema), exploracionesController.crearMuestra);
 router.get("/muestras", validate(getMuestrasQuerySchema), exploracionesController.listarMuestras);
