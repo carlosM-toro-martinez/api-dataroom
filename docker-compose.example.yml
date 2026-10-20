@@ -1,0 +1,62 @@
+services:
+  postgres-explora:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: explora_user
+      # La clave ya no vive en el repositorio: se define en el .env del servidor (ver docs/SEGURIDAD.md).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en el .env del servidor}
+      POSTGRES_DB: exploracion_db
+    volumes:
+      - postgres_explora_data:/var/lib/postgresql/data
+    networks:
+      - traefik-public
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U explora_user -d exploracion_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api-explora:
+    build: .
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://explora_user:${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en el .env del servidor}@postgres-explora:5432/exploracion_db
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+      PORT: 3000
+      ADMIN_NAME: ${ADMIN_NAME}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      FRONTEND_URL: https://exploracion.marte.encuentrass.lat/forgot-password
+      MEDIA_ROOT: /app/storage/media
+      NODE_ENV: production
+      # Sitios extra autorizados a usar la API desde un navegador (separados por coma). Los de Minera Marte ya vienen incluidos.
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    volumes:
+      - api_explora_media:/app/storage/media
+    depends_on:
+      postgres-explora:
+        condition: service_healthy
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.api-explora.rule=Host(`api-exploracion.marte.encuentrass.lat`)"
+      - "traefik.http.routers.api-explora.entrypoints=websecure"
+      - "traefik.http.routers.api-explora.tls.certresolver=le"
+      - "traefik.http.services.api-explora.loadbalancer.server.port=3000"
+
+
+volumes:
+  postgres_explora_data:
+  api_explora_media:
+
+networks:
+  traefik-public:
+    external: true

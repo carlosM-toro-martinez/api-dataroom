@@ -4,7 +4,7 @@
 
 | Tema | Antes | Ahora |
 |---|---|---|
-| Clave de la base de datos | Escrita en `docker-compose.yml` (queda para siempre en el historial de Git) | Se lee de `POSTGRES_PASSWORD` en el `.env` del servidor. Si falta, `docker compose` **se detiene antes de tocar nada**. |
+| Clave de la base de datos | Escrita en texto plano dentro del `docker-compose.yml` del servidor | Se lee de `POSTGRES_PASSWORD` en el `.env` del servidor. Si falta, `docker compose` **se detiene antes de tocar nada**. |
 | Token de recuperación de contraseña | Se imprimía en el log del servidor | Ya no se escribe en ningún log |
 | CORS | Aceptaba cualquier sitio web | Solo `marte.encuentrass.lat`, `minmartesrl.com`, `www.minmartesrl.com`, `exploracion.marte.encuentrass.lat` y los de la variable `CORS_ORIGINS` |
 | «Olvidé mi contraseña» | Decía «Usuario no encontrado» si el correo no existía | Responde siempre lo mismo; el intento queda en la bitácora de auditoría |
@@ -18,13 +18,13 @@ CORS_ORIGINS=            # opcional: otros sitios permitidos, separados por coma
 
 ## Cómo cambiar la clave de la base de datos SIN perder acceso
 
-La clave vieja (`Explora_2026!`) ya está en el historial de Git, así que **hay que cambiarla**, pero se hace en dos pasos
+La clave actual estuvo escrita en texto plano en el `docker-compose.yml` (que está en el `.gitignore`, así que no se subió a Git, pero sí vive en el servidor y en cualquier copia del archivo), por eso **conviene cambiarla**. Se hace en dos pasos
 independientes. Después de cada paso todo sigue funcionando; si algo falla, se vuelve al paso anterior.
 
 ### Paso 1 — Sacar la clave del repositorio (no cambia nada para los usuarios)
 1. En el servidor, en el `.env` de `api-exploracion`, agrega la **clave actual** tal cual:
-   `POSTGRES_PASSWORD=Explora_2026!`
-2. Despliega el nuevo `docker-compose.yml`. La base y la API siguen conectándose con la misma clave de siempre.
+   `POSTGRES_PASSWORD=<la clave que hoy aparece en el docker-compose.yml del servidor>`
+2. Reemplaza el `docker-compose.yml` del servidor por `docker-compose.example.yml` (está en el repositorio, sin secretos). La base y la API siguen conectándose con la misma clave de siempre.
 3. Comprueba que la web funciona (entrar, abrir Sondajes).
 
 > Si el despliegue dice «Falta POSTGRES_PASSWORD», no se cambió nada: agrega la variable y vuelve a desplegar.
@@ -41,7 +41,7 @@ independientes. Después de cada paso todo sigue funcionando; si algo falla, se 
 5. Comprueba que entra y que Sondajes carga.
 
 **Si algo sale mal en el paso 2:** la base sigue viva. Vuelve a poner la clave vieja con el mismo comando
-`ALTER USER explora_user WITH PASSWORD 'Explora_2026!';`, deja la vieja en el `.env` y reinicia la API.
+`ALTER USER explora_user WITH PASSWORD '<CLAVE_ACTUAL>';`, deja la vieja en el `.env` y reinicia la API.
 La base de datos nunca se borra en este procedimiento (los datos están en el volumen `postgres_explora_data`).
 
 Nota: `POSTGRES_PASSWORD` solo se usa para crear la base la primera vez; por eso el cambio se hace con `ALTER USER`.
