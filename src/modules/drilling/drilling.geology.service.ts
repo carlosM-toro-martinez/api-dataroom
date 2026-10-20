@@ -121,10 +121,10 @@ export const geologyLog = {
       createdById: userId ?? null,
       updatedById: userId ?? null,
     }));
-    await prisma.$transaction([
-      prisma.drillingLogInterval.deleteMany({ where: { holeId } }),
-      prisma.drillingLogInterval.createMany({ data }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.drillingLogInterval.deleteMany({ where: { holeId } });
+      await tx.drillingLogInterval.createMany({ data });
+    });
     return geologyLog.get(holeId);
   },
 };

@@ -2,6 +2,7 @@ import type { NextFunction, Response } from "express";
 import type { AuthRequest } from "./auth.middleware.js";
 import { hasAnyPermission } from "../modules/roles/roles.service.js";
 import type { PermissionAction, PermissionModule } from "../modules/roles/permissions.catalog.js";
+import { auditEvent } from "../config/audit.js";
 
 type ModuleSpec =
   | PermissionModule
@@ -31,6 +32,7 @@ export function requirePermission(spec: ModuleSpec, action?: PermissionAction) {
     const modules = typeof spec === "function" ? spec(req, resolvedAction) : Array.isArray(spec) ? spec : [spec];
     try {
       if (await hasAnyPermission(req.user.role, modules, resolvedAction)) return next();
+      void auditEvent({ action: "ACCESS_DENIED", entity: "permisos", detail: { modulos: modules, accion: resolvedAction } });
       return res.status(403).json({ success: false, error: "No tienes permiso para esta acción" });
     } catch (error) {
       next(error);

@@ -1545,3 +1545,48 @@ enum DrillingSampleType {
   STANDARD
   BLANK
 }
+
+////////////////////////////////
+// AUDITORÍA (bitácora de solo agregado, encadenada con hash)
+// Se llena con triggers de la base de datos: ver la migración 20261019000000_audit_trail.
+////////////////////////////////
+
+model AuditLog {
+  seq           BigInt   @id
+  at            DateTime @default(dbgenerated("clock_timestamp()")) @db.Timestamptz(6)
+  source        String
+  action        String
+  tableName     String   @map("table_name")
+  recordId      String?  @map("record_id")
+  recordLabel   String?  @map("record_label")
+  actorId       Int?     @map("actor_id")
+  actorName     String?  @map("actor_name")
+  actorEmail    String?  @map("actor_email")
+  actorRole     String?  @map("actor_role")
+  requestId     String?  @map("request_id")
+  ip            String?
+  userAgent     String?  @map("user_agent")
+  route         String?
+  dbUser        String?  @map("db_user")
+  txid          BigInt?
+  changedFields String[] @map("changed_fields")
+  oldData       Json?    @map("old_data")
+  newData       Json?    @map("new_data")
+  detail        Json?
+  prevHash      String   @map("prev_hash")
+  hash          String
+
+  @@index([at])
+  @@index([tableName, recordId])
+  @@index([actorId, at])
+  @@index([action])
+  @@map("audit_log")
+}
+
+model AuditChainHead {
+  id       Int    @id
+  lastSeq  BigInt @map("last_seq")
+  lastHash String @map("last_hash")
+
+  @@map("audit_chain_head")
+}

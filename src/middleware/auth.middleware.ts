@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { getJwtSecret } from "../config/auth.js";
 import { prisma } from "../config/prisma.js";
+import { setAuditActor } from "../config/auditContext.js";
 
 export interface AuthRequest extends Request {
   user?: { id: number; role: string };
@@ -38,6 +39,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       }
     }
     req.user = decoded;
+    setAuditActor(decoded.id, decoded.role);
     next();
   } catch {
     res.status(401).json({ success: false, error: "Token inválido" });

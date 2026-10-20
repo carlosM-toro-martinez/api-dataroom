@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 
 import { logger } from "./config/logger.js";
 import routes from "./routes/index.js";
+import { auditContextMiddleware } from "./config/audit.js";
 
 const app = express();
 const corsOptions: cors.CorsOptions = {
@@ -42,6 +43,9 @@ app.use((req, res, next) => {
 });
 
 app.use(helmet());
+
+// Cada petición lleva su contexto (quién, desde dónde) para la bitácora de auditoría.
+app.use(auditContextMiddleware);
 
 app.use("/api", routes);
 

@@ -16,6 +16,8 @@ import type {
   UpdateUserDTO,
 } from "./auth.types.js";
 import { logger } from "../../config/logger.js";
+import { auditEvent } from "../../config/audit.js";
+import { setAuditActor } from "../../config/auditContext.js";
 import { HttpError } from "../../errors/http.error.js";
 import { getJwtSecret, getRefreshTokenSecret } from "../../config/auth.js";
 import { getRolePermissions, rolesService } from "../roles/roles.service.js";
@@ -119,10 +121,15 @@ export const authService = {
 
     if (!user || !(await bcrypt.compare(data.password, user.password))) {
       logger.warn({ email }, "Intento de login fallido");
+      await auditEvent({ action: "LOGIN_FAILED", entity: "auth", recordId: user?.id ?? null, label: email, actorId: user?.id ?? null, detail: { motivo: user ? "contraseña incorrecta" : "usuario inexistente", email } });
       throw new HttpError("Credenciales inválidas", 401);
     }
 
+    // A partir de aquí todo lo que se escriba (token de sesión, etc.) queda a nombre de esta persona.
+    setAuditActor(user.id, user.role);
+
     if (user.activo === false) {
+      await auditEvent({ action: "LOGIN_FAILED", entity: "auth", recordId: user.id, label: email, detail: { motivo: "usuario inactivo", email } });
       throw new HttpError("Usuario inactivo", 403);
     }
 
@@ -167,6 +174,7 @@ export const authService = {
     });
 
     logger.info({ userId: user.id }, "Usuario logueado");
+    await auditEvent({ action: "LOGIN", entity: "auth", recordId: user.id, label: user.email, detail: { email: user.email } });
     return {
       accessToken,
       refreshToken,
@@ -379,7 +387,11 @@ export const authService = {
 
   async forgotPassword(data: ForgotPasswordDTO) {
     const user = await prisma.user.findFirst({ where: userEmailWhere(data.email) });
-    if (!user) throw new HttpError("Usuario no encontrado", 404);
+    if (!user) {
+      await auditEvent({ action: "PASSWORD_RESET_REQUESTED", entity: "auth", label: data.email, detail: { email: data.email, resultado: "correo no registrado" } });
+      throw new HttpError("Usuario no encontrado", 404);
+    }
+    setAuditActor(user.id, user.role);
 
     const resetToken = crypto.randomBytes(32).toString("hex");
     const resetTokenExpiry = new Date(Date.now() + 10 * 60 * 1000);
@@ -402,6 +414,7 @@ export const authService = {
     }
 
     logger.info({ userId: user.id }, "Token de recuperación enviado");
+    await auditEvent({ action: "PASSWORD_RESET_REQUESTED", entity: "auth", recordId: user.id, label: user.email, detail: { email: user.email } });
     return { message: "Correo de recuperación enviado" };
   },
 
@@ -410,7 +423,11 @@ export const authService = {
       where: { resetToken: token, resetTokenExpiry: { gt: new Date() } },
     });
 
-    if (!user) throw new HttpError("Token inválido o expirado", 400);
+    if (!user) {
+      await auditEvent({ action: "PASSWORD_RESET_FAILED", entity: "auth", detail: { motivo: "token inválido o expirado" } });
+      throw new HttpError("Token inválido o expirado", 400);
+    }
+    setAuditActor(user.id, user.role);
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
@@ -419,12 +436,14 @@ export const authService = {
     });
 
     logger.info({ userId: user.id }, "Contraseña reseteada");
+    await auditEvent({ action: "PASSWORD_RESET_COMPLETED", entity: "auth", recordId: user.id, label: user.email });
     return { message: "Contraseña actualizada exitosamente" };
   },
 
   async changePassword(userId: number, data: ChangePasswordDTO) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !(await bcrypt.compare(data.currentPassword, user.password))) {
+      await auditEvent({ action: "PASSWORD_CHANGE_FAILED", entity: "auth", recordId: userId, detail: { motivo: "contraseña actual incorrecta" } });
       throw new HttpError("Contraseña actual incorrecta", 400);
     }
 
@@ -435,6 +454,7 @@ export const authService = {
     });
 
     logger.info({ userId }, "Contraseña cambiada");
+    await auditEvent({ action: "PASSWORD_CHANGED", entity: "auth", recordId: userId, label: user.email });
     return { message: "Contraseña cambiada exitosamente" };
   },
 
@@ -495,6 +515,7 @@ export const authService = {
       data: { refreshToken: null, refreshTokenExpiry: null },
     });
     logger.info({ userId }, "Usuario deslogueado");
+    await auditEvent({ action: "LOGOUT", entity: "auth", recordId: userId });
     return { message: "Logout exitoso" };
   },
 };
