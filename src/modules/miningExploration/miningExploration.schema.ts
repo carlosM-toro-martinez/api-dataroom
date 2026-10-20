@@ -47,6 +47,9 @@ export const updateZoneSchema = z
 
 export const drillHoleQuerySchema = paginationSchema.extend({
   zoneId: z.coerce.number().int().positive(),
+  // "summary": lista liviana (sin intervalos ni ensayos anidados) con búsqueda y total, para las pantallas de navegación.
+  view: z.enum(["full", "summary"]).optional(),
+  search: z.string().trim().max(100).optional(),
 });
 
 export const createDrillHoleSchema = z
@@ -420,6 +423,17 @@ export const significantInterceptQuerySchema = paginationSchema.extend({
   drillHoleId: z.coerce.number().int().positive().optional(),
   zoneId: z.coerce.number().int().positive().optional(),
 });
+
+export const computedInterceptQuerySchema = z
+  .object({
+    zoneId: z.coerce.number().int().positive().optional(),
+    drillHoleId: z.coerce.number().int().positive().optional(),
+    element: z.enum(["au", "cu", "ag"]).default("au"),
+    cutoff: z.coerce.number().min(0).max(1_000_000).default(0.5),
+    minWidth: z.coerce.number().min(0).max(10_000).default(1),
+    maxDilution: z.coerce.number().min(0).max(10_000).default(2),
+  })
+  .refine((value) => value.zoneId || value.drillHoleId, { message: "Indica zoneId o drillHoleId" });
 
 export const createSignificantInterceptSchema = z
   .object({

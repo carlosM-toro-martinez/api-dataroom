@@ -23,6 +23,7 @@ import {
   createQAQCSchema,
   createRecoverySchema,
   createResourceSchema,
+  computedInterceptQuerySchema,
   createSignificantInterceptSchema,
   createZoneSchema,
   densityQuerySchema,
@@ -185,6 +186,7 @@ router.put("/magnetic-susceptibilities/:id", validateParams(idSchema), validate(
 router.delete("/magnetic-susceptibilities/:id", validateParams(idSchema), miningExplorationController.deleteMagneticSusceptibility);
 
 router.get("/significant-intercepts", validateQuery(significantInterceptQuerySchema), miningExplorationController.getSignificantIntercepts);
+router.get("/significant-intercepts/computed", validateQuery(computedInterceptQuerySchema), miningExplorationController.getComputedIntercepts);
 router.get("/significant-intercepts/:id", validateParams(idSchema), miningExplorationController.getSignificantInterceptById);
 router.post("/significant-intercepts", validate(createSignificantInterceptSchema), miningExplorationController.createSignificantIntercept);
 router.put("/significant-intercepts/:id", validateParams(idSchema), validate(updateSignificantInterceptSchema), miningExplorationController.updateSignificantIntercept);

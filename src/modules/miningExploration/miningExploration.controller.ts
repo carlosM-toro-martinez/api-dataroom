@@ -126,7 +126,12 @@ export const miningExplorationController = {
 
   async getDrillHoles(req: AuthRequest, res: Response) {
     try {
-      const drillHoles = await miningExplorationService.getDrillHoles(getValidatedQuery(req) as any);
+      const query = getValidatedQuery(req) as any;
+      if (query.view === "summary") {
+        const page = await miningExplorationService.getDrillHolesSummary(query);
+        return res.json({ success: true, ...page });
+      }
+      const drillHoles = await miningExplorationService.getDrillHoles(query);
       res.json({ success: true, data: drillHoles });
     } catch (error) {
       const status = error instanceof HttpError ? error.statusCode : 500;
@@ -184,8 +189,8 @@ export const miningExplorationController = {
 
   async getIntervals(req: AuthRequest, res: Response) {
     try {
-      const intervals = await miningExplorationService.getIntervals(getValidatedQuery(req) as any);
-      res.json({ success: true, data: intervals });
+      const page = await miningExplorationService.getIntervalsPage(getValidatedQuery(req) as any);
+      res.json({ success: true, ...page });
     } catch (error) {
       const status = error instanceof HttpError ? error.statusCode : 500;
       res.status(status).json({ success: false, error: (error as Error).message });
@@ -940,6 +945,16 @@ export const miningExplorationController = {
     try {
       const items = await miningExplorationService.getSignificantIntercepts(getValidatedQuery(req) as any);
       res.json({ success: true, data: items });
+    } catch (error) {
+      const status = error instanceof HttpError ? error.statusCode : 500;
+      res.status(status).json({ success: false, error: (error as Error).message });
+    }
+  },
+
+  async getComputedIntercepts(req: AuthRequest, res: Response) {
+    try {
+      const result = await miningExplorationService.getComputedIntercepts(getValidatedQuery(req) as any);
+      res.json({ success: true, ...result });
     } catch (error) {
       const status = error instanceof HttpError ? error.statusCode : 500;
       res.status(status).json({ success: false, error: (error as Error).message });

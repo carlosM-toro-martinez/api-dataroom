@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import {
   alterationQuerySchema,
+  computedInterceptQuerySchema,
   assayQuerySchema,
   assayValueQuerySchema,
   createAlterationSchema,
@@ -65,6 +66,7 @@ export type DrillHoleQuery = z.infer<typeof drillHoleQuerySchema>;
 export type CreateDrillHoleDTO = z.infer<typeof createDrillHoleSchema>;
 export type UpdateDrillHoleDTO = z.infer<typeof updateDrillHoleSchema>;
 
+export type ComputedInterceptQuery = z.infer<typeof computedInterceptQuerySchema>;
 export type IntervalQuery = z.infer<typeof intervalQuerySchema>;
 export type CreateIntervalDTO = z.infer<typeof createIntervalSchema>;
 export type UpdateIntervalDTO = z.infer<typeof updateIntervalSchema>;

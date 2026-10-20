@@ -20,6 +20,7 @@ import type {
   CreateQAQCDTO,
   CreateRecoveryDTO,
   CreateResourceDTO,
+  ComputedInterceptQuery,
   CreateSignificantInterceptDTO,
   CreateZoneDTO,
   DensityQuery,
@@ -58,6 +59,8 @@ import type {
 const safeLog = (accion: string, data: object, usuarioId?: number) => {
   logger.info({ accion, data, usuarioId }, "Action logged");
 };
+
+import { computeIntercepts, type AssayedInterval } from "./intercepts.js";
 
 const getPagination = (query: any) => {
   const page = Number(query.page ?? 1);
@@ -219,6 +222,24 @@ export const miningExplorationService = {
     });
   },
 
+  // Lista liviana para navegar: sin intervalos ni ensayos anidados (la versión completa de una zona grande pesa varios MB).
+  async getDrillHolesSummary(query: DrillHoleQuery) {
+    const { page, limit, skip } = getPagination(query);
+    const where: any = { zoneId: query.zoneId };
+    if (query.search) where.name = { contains: String(query.search), mode: "insensitive" as const };
+    const [data, total] = await Promise.all([
+      prisma.drillHole.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { name: "asc" },
+        include: { project: { select: { id: true, name: true } }, zone: { select: { id: true, name: true } }, _count: { select: { intervals: true } } },
+      }),
+      prisma.drillHole.count({ where }),
+    ]);
+    return { data, meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } };
+  },
+
   async getDrillHoleById(id: number) {
     return prisma.drillHole.findUnique({
       where: { id },
@@ -294,6 +315,16 @@ export const miningExplorationService = {
         lithologies: true,
       },
     });
+  },
+
+  // Igual que getIntervals pero con el total, para poder paginar.
+  async getIntervalsPage(query: IntervalQuery) {
+    const { page, limit } = getPagination(query);
+    const [data, total] = await Promise.all([
+      miningExplorationService.getIntervals(query),
+      prisma.interval.count({ where: { drillHoleId: query.drillHoleId } }),
+    ]);
+    return { data, meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } };
   },
 
   async getIntervalById(id: number) {
@@ -1056,6 +1087,35 @@ export const miningExplorationService = {
         },
       },
     });
+  },
+
+  // Interceptos calculados desde los ensayos (no se guardan: siempre reflejan los datos actuales y el corte pedido).
+  async getComputedIntercepts(query: ComputedInterceptQuery) {
+    const where: any = query.drillHoleId ? { drillHoleId: query.drillHoleId } : { drillHole: { zoneId: query.zoneId } };
+    const intervals = await prisma.interval.findMany({
+      where,
+      orderBy: [{ drillHoleId: "asc" }, { fromDepth: "asc" }],
+      select: {
+        drillHoleId: true,
+        fromDepth: true,
+        toDepth: true,
+        drillHole: { select: { name: true } },
+        assays: { select: { au: true, cu: true, ag: true } },
+      },
+    });
+    const byHole = new Map<number, { name: string; rows: AssayedInterval[] }>();
+    for (const interval of intervals) {
+      const entry = byHole.get(interval.drillHoleId) ?? { name: interval.drillHole.name, rows: [] };
+      const mean = (key: "au" | "cu" | "ag") =>
+        interval.assays.length ? interval.assays.reduce((sum, assay) => sum + Number(assay[key]), 0) / interval.assays.length : null;
+      entry.rows.push({ from: Number(interval.fromDepth), to: Number(interval.toDepth), au: mean("au"), cu: mean("cu"), ag: mean("ag") });
+      byHole.set(interval.drillHoleId, entry);
+    }
+    const params = { element: query.element, cutoff: query.cutoff, minWidth: query.minWidth, maxDilution: query.maxDilution };
+    const data = [...byHole.entries()].flatMap(([drillHoleId, entry]) =>
+      computeIntercepts(entry.rows, params).map((intercept) => ({ drillHoleId, drillHoleName: entry.name, element: query.element, ...intercept })),
+    );
+    return { data, params };
   },
 
   async getSignificantInterceptById(id: number) {
