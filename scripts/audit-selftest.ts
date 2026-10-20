@@ -39,6 +39,12 @@ async function main() {
   check("login con clave mala: 401", bad1.status === 401);
   const failed = await basePrisma.$queryRawUnsafe<any[]>(`SELECT * FROM audit_log WHERE action = 'LOGIN_FAILED' ORDER BY seq DESC LIMIT 1`);
   check("queda LOGIN_FAILED con IP y motivo", failed[0]?.ip === "203.0.113.7" && failed[0]?.detail?.motivo === "contraseña incorrecta", JSON.stringify(failed[0]?.detail));
+  const unknown = await call("POST", "/auth/login", undefined, { email: "nadie.existe@ejemplo.com", password: "clave-larga-123" });
+  const unknownRow = await basePrisma.$queryRawUnsafe<any[]>(`SELECT * FROM audit_log WHERE action = 'LOGIN_FAILED' AND record_label = 'nadie.existe@ejemplo.com' ORDER BY seq DESC LIMIT 1`);
+  check("ingreso fallido con un correo inexistente también queda registrado", unknown.status === 401 && unknownRow[0]?.detail?.motivo === "usuario inexistente" && unknownRow[0]?.actor_id == null);
+  const forgot = await call("POST", "/auth/forgot-password", undefined, { email: "nadie.existe@ejemplo.com" });
+  const forgotRow = await basePrisma.$queryRawUnsafe<any[]>(`SELECT * FROM audit_log WHERE action = 'PASSWORD_RESET_REQUESTED' AND record_label = 'nadie.existe@ejemplo.com' ORDER BY seq DESC LIMIT 1`);
+  check("recuperar clave con correo inexistente: misma respuesta (200) y queda registrado", forgot.status === 200 && forgotRow.length === 1);
   const login = await call("POST", "/auth/login", undefined, { email: EMAIL, password: PASSWORD });
   const token = login.data?.data?.accessToken as string;
   const adminId = login.data?.data?.user?.id as number;

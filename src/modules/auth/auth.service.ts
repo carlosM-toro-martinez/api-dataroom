@@ -386,10 +386,12 @@ export const authService = {
   },
 
   async forgotPassword(data: ForgotPasswordDTO) {
+    // La respuesta es SIEMPRE la misma exista o no el correo: así nadie puede averiguar quién tiene cuenta.
+    const response = { message: "Si el correo está registrado, recibirás un mensaje con las instrucciones para recuperar tu contraseña." };
     const user = await prisma.user.findFirst({ where: userEmailWhere(data.email) });
-    if (!user) {
-      await auditEvent({ action: "PASSWORD_RESET_REQUESTED", entity: "auth", label: data.email, detail: { email: data.email, resultado: "correo no registrado" } });
-      throw new HttpError("Usuario no encontrado", 404);
+    if (!user || user.activo === false) {
+      await auditEvent({ action: "PASSWORD_RESET_REQUESTED", entity: "auth", label: data.email, detail: { email: data.email, resultado: user ? "usuario inactivo" : "correo no registrado" } });
+      return response;
     }
     setAuditActor(user.id, user.role);
 
@@ -402,20 +404,26 @@ export const authService = {
     });
 
     const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:4001"}?token=${resetToken}`;
-    console.log(`🔑 RESET TOKEN PARA ${user.email}: ${resetToken}`);
 
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      await transporter.sendMail({
-        from: process.env.SMTP_USER,
-        to: user.email,
-        subject: "Recuperación de contraseña - Minera Marte Exploración",
-        html: `<p>Hola ${user.nombre},</p><p>Haz clic para resetear tu contraseña: <a href="${resetUrl}">${resetUrl}</a></p><p>Expira en 10 minutos.</p>`,
-      });
+      try {
+        await transporter.sendMail({
+          from: process.env.SMTP_USER,
+          to: user.email,
+          subject: "Recuperación de contraseña - Minera Marte Exploración",
+          html: `<p>Hola ${user.nombre},</p><p>Haz clic para resetear tu contraseña: <a href="${resetUrl}">${resetUrl}</a></p><p>Expira en 10 minutos. Si no lo pediste, ignora este mensaje.</p>`,
+        });
+      } catch (error) {
+        // Un fallo de correo tampoco se le cuenta al visitante; queda en el log del servidor.
+        logger.error({ err: error, userId: user.id }, "No se pudo enviar el correo de recuperación");
+      }
+    } else {
+      logger.warn({ userId: user.id }, "SMTP no configurado: no se envió el correo de recuperación");
     }
 
-    logger.info({ userId: user.id }, "Token de recuperación enviado");
+    logger.info({ userId: user.id }, "Token de recuperación generado");
     await auditEvent({ action: "PASSWORD_RESET_REQUESTED", entity: "auth", recordId: user.id, label: user.email, detail: { email: user.email } });
-    return { message: "Correo de recuperación enviado" };
+    return response;
   },
 
   async resetPassword(token: string, newPassword: string) {
