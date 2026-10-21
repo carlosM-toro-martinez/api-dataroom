@@ -28,7 +28,9 @@ function where(query: Omit<AuditQuery, "page" | "limit">) {
   if (query.action) parts.push(Prisma.sql`action = ${query.action}`);
   if (query.table) parts.push(Prisma.sql`table_name = ${query.table}`);
   if (query.recordId) parts.push(Prisma.sql`record_id = ${query.recordId}`);
-  if (query.source) parts.push(Prisma.sql`source = ${query.source}`);
+  // Las tareas internas del sistema (arranque, procesos automáticos) no interesan al revisar la bitácora:
+  // solo se muestran si se pide ese origen de forma explícita.
+  parts.push(query.source ? Prisma.sql`source = ${query.source}` : Prisma.sql`source <> 'system'`);
   if (query.search) {
     const like = `%${query.search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
     parts.push(Prisma.sql`(record_label ILIKE ${like} OR record_id ILIKE ${like} OR actor_name ILIKE ${like} OR actor_email ILIKE ${like} OR route ILIKE ${like})`);
@@ -71,9 +73,9 @@ export const auditService = {
     const [actors, tables, actions] = await Promise.all([
       basePrisma.$queryRaw<Row[]>`
         SELECT actor_id AS id, max(actor_name) AS name, max(actor_email) AS email, count(*)::int AS events
-        FROM audit_log WHERE actor_id IS NOT NULL GROUP BY actor_id ORDER BY max(actor_name)`,
-      basePrisma.$queryRaw<Row[]>`SELECT table_name AS name, count(*)::int AS events FROM audit_log GROUP BY table_name ORDER BY table_name`,
-      basePrisma.$queryRaw<Row[]>`SELECT action AS name, count(*)::int AS events FROM audit_log GROUP BY action ORDER BY action`,
+        FROM audit_log WHERE actor_id IS NOT NULL AND source <> 'system' GROUP BY actor_id ORDER BY max(actor_name)`,
+      basePrisma.$queryRaw<Row[]>`SELECT table_name AS name, count(*)::int AS events FROM audit_log WHERE source <> 'system' GROUP BY table_name ORDER BY table_name`,
+      basePrisma.$queryRaw<Row[]>`SELECT action AS name, count(*)::int AS events FROM audit_log WHERE source <> 'system' GROUP BY action ORDER BY action`,
     ]);
     return { actors: actors.map(plain), tables: tables.map(plain), actions: actions.map(plain) };
   },
