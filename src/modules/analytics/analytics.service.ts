@@ -1,12 +1,15 @@
 import { Prisma } from "@prisma/client";
 import { basePrisma } from "../../config/prisma.js";
-import { idw } from "./idw.js";
+import { idw, type EstimationMethod } from "./idw.js";
+import { kriging } from "./kriging.js";
 
 export type AnalyticsFilters = {
   category?: "EXPLORATION" | "PRODUCTION" | undefined;
   source?: "INTERIOR" | "SURFACE" | undefined;
   from?: string | undefined;
   to?: string | undefined;
+  // Si viene, solo cuentan las muestras registradas por esa persona (vista "mis muestras").
+  ownerId?: number | undefined;
 };
 
 type Row = Record<string, unknown>;
@@ -14,7 +17,7 @@ type Row = Record<string, unknown>;
 // Una sola vista de muestras (interior mina + superficie) y otra de resultados, para consultar ambas igual.
 const SAMPLES = Prisma.sql`
   SELECT 'INTERIOR'::text AS source, sa.id, sa.code, sa.category::text AS category, sa.status::text AS status,
-         sa.east, sa.north, sa.elevation, COALESCE(sa."sampledAt", sa."createdAt") AS at,
+         sa.east, sa.north, sa.elevation, COALESCE(sa."sampledAt", sa."createdAt") AS at, sa."createdById" AS owner,
          ar.id AS area_id, ar.name AS area, lv.id AS level_id, lv.name AS level, lb.id AS labor_id, lb.name AS labor, ob.name AS objective
   FROM "InteriorSample" sa
   JOIN "InteriorLevel" lv ON lv.id = sa."interiorLevelId"
@@ -23,7 +26,7 @@ const SAMPLES = Prisma.sql`
   JOIN "InteriorObjective" ob ON ob.id = sa."interiorObjectiveId"
   UNION ALL
   SELECT 'SURFACE'::text, sa.id, sa.code, sa.category::text, sa.status::text,
-         sa.east, sa.north, sa.elevation, COALESCE(sa."sampledAt", sa."createdAt"),
+         sa.east, sa.north, sa.elevation, COALESCE(sa."sampledAt", sa."createdAt"), sa."createdById",
          ar.id, ar.name, lv.id, lv.name, lb.id, lb.name, ob.name
   FROM "SurfaceSample" sa
   JOIN "SurfaceLevel" lv ON lv.id = sa."surfaceLevelId"
@@ -57,6 +60,7 @@ function sampleFilter(f: AnalyticsFilters) {
   if (f.source) parts.push(Prisma.sql`x.source = ${f.source}`);
   if (f.from) parts.push(Prisma.sql`x.at >= ${new Date(f.from)}`);
   if (f.to) parts.push(Prisma.sql`x.at < ${new Date(f.to)}`);
+  if (f.ownerId != null) parts.push(Prisma.sql`x.owner = ${f.ownerId}`);
   return Prisma.join(parts, " AND ");
 }
 
@@ -126,11 +130,19 @@ export const analyticsService = {
       FROM r JOIN s ON s.source = r.source AND s.id = r.sample_id
       WHERE ${VALID} GROUP BY r.symbol, r.unit ORDER BY samples DESC, r.symbol LIMIT 40`);
 
-    const [dispatches] = await query(Prisma.sql`
+    const [dispatches] = await query(
+      f.ownerId != null
+        ? Prisma.sql`
+      SELECT (SELECT count(DISTINCT d.id) FROM "InteriorSampleDispatch" d JOIN "InteriorDispatchItem" i ON i."dispatchId" = d.id JOIN "InteriorSample" sa ON sa.id = i."interiorSampleId" WHERE d.status = 'PENDING' AND sa."createdById" = ${f.ownerId})::int
+           + (SELECT count(DISTINCT d.id) FROM "SurfaceSampleDispatch" d JOIN "SurfaceDispatchItem" i ON i."dispatchId" = d.id JOIN "SurfaceSample" sa ON sa.id = i."surfaceSampleId" WHERE d.status = 'PENDING' AND sa."createdById" = ${f.ownerId})::int AS pending,
+             (SELECT count(DISTINCT d.id) FROM "InteriorSampleDispatch" d JOIN "InteriorDispatchItem" i ON i."dispatchId" = d.id JOIN "InteriorSample" sa ON sa.id = i."interiorSampleId" WHERE d.status = 'COMPLETED' AND sa."createdById" = ${f.ownerId})::int
+           + (SELECT count(DISTINCT d.id) FROM "SurfaceSampleDispatch" d JOIN "SurfaceDispatchItem" i ON i."dispatchId" = d.id JOIN "SurfaceSample" sa ON sa.id = i."surfaceSampleId" WHERE d.status = 'COMPLETED' AND sa."createdById" = ${f.ownerId})::int AS completed`
+        : Prisma.sql`
       SELECT (SELECT count(*) FROM "InteriorSampleDispatch" WHERE status = 'PENDING')::int
            + (SELECT count(*) FROM "SurfaceSampleDispatch" WHERE status = 'PENDING')::int AS pending,
              (SELECT count(*) FROM "InteriorSampleDispatch" WHERE status = 'COMPLETED')::int
-           + (SELECT count(*) FROM "SurfaceSampleDispatch" WHERE status = 'COMPLETED')::int AS completed`);
+           + (SELECT count(*) FROM "SurfaceSampleDispatch" WHERE status = 'COMPLETED')::int AS completed`,
+    );
 
     return { totals, dispatches, byMonth: byMonth.reverse(), elements };
   },
@@ -180,7 +192,7 @@ export const analyticsService = {
       GROUP BY 1, 2, 3, 4, 5 ORDER BY samples DESC`);
 
     const emptyLabors =
-      f.from || f.to
+      f.from || f.to || f.ownerId != null
         ? []
         : await query(Prisma.sql`
       SELECT * FROM (
@@ -285,7 +297,7 @@ export const analyticsService = {
   },
 
   // Mapa de leyes estimadas (IDW) de un nivel y puntos sugeridos para la próxima muestra.
-  async estimation(f: AnalyticsFilters, opts: { element?: string | undefined; unit?: string | undefined; levelId?: string | undefined }) {
+  async estimation(f: AnalyticsFilters, opts: { element?: string | undefined; unit?: string | undefined; levelId?: string | undefined; method?: EstimationMethod | undefined }) {
     const chosen = await resolveElement(f, opts.element, opts.unit);
     if (!chosen) return { element: null, unit: null, levels: [], selectedLevelId: null, result: null };
 
@@ -296,7 +308,7 @@ export const analyticsService = {
       FROM g GROUP BY 1, 2, 3 ORDER BY points DESC, label`);
 
     const selectedLevelId = opts.levelId ?? (levels[0] ? String(levels[0]["id"]) : null);
-    if (!selectedLevelId) return { ...chosen, levels, selectedLevelId, result: null };
+    if (!selectedLevelId) return { ...chosen, method: opts.method ?? "idw", levels, selectedLevelId, result: null };
 
     const rows = await query(Prisma.sql`
       WITH ${withSamples(f)}, ${sampleValues(chosen.element, chosen.unit)}
@@ -304,8 +316,9 @@ export const analyticsService = {
       FROM g WHERE g.level_id = ${selectedLevelId} AND g.east IS NOT NULL AND g.north IS NOT NULL`);
 
     const points = rows.map((r) => ({ id: String(r["id"]), code: String(r["code"]), east: Number(r["east"]), north: Number(r["north"]), value: Number(r["value"]) }));
-    const result = idw(points);
-    return { ...chosen, levels, selectedLevelId, points, result };
+    const method = opts.method ?? "idw";
+    const result = method === "kriging" ? kriging(points) : idw(points);
+    return { ...chosen, method, levels, selectedLevelId, points, result };
   },
 };
 

@@ -9,6 +9,7 @@ export const PERMISSION_MODULES = [
   { key: "sondajes", label: "Sondajes · Perforación", description: "Programas de perforación, pozos, partes diarios de turno y personal." },
   { key: "geologiaSondajes", label: "Sondajes · Geología", description: "Reporte geológico diario, logueo (quick log) y fotografías de testigos. Ve la lista de pozos sin poder editarla." },
   { key: "analisisMuestras", label: "Análisis de muestras", description: "Tablero con leyes, cobertura, laboratorios, calidad y estimación espacial de las muestras. Solo lectura." },
+  { key: "misAnalisisMuestras", label: "Análisis de mis muestras", description: "El mismo tablero de análisis, pero solo con las muestras que registró la propia persona. Solo lectura." },
   { key: "elementos", label: "Códigos de muestra", description: "Revisión y reparación de códigos de muestra duplicados." },
   { key: "solicitudes", label: "Solicitudes Data Room", description: "Aprobar, rechazar o cancelar accesos de visitantes." },
   { key: "usuarios", label: "Usuarios y roles", description: "Crear usuarios, asignar roles y editar permisos. Equivale a poder de administración." },

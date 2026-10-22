@@ -1,7 +1,8 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
-import { authenticate } from "../../middleware/auth.middleware.js";
+import { authenticate, type AuthRequest } from "../../middleware/auth.middleware.js";
 import { requirePermission } from "../../middleware/permission.middleware.js";
+import { hasAnyPermission } from "../roles/roles.service.js";
 import { analyticsService, type AnalyticsFilters } from "./analytics.service.js";
 
 const date = z.string().refine((value) => !Number.isNaN(new Date(value).getTime()), "Fecha no válida");
@@ -27,23 +28,32 @@ const handle =
     }
   };
 
-const parseFilters = (req: Request) => clean(filters.parse(req.query)) as AnalyticsFilters;
+// Quien tiene "Análisis de muestras" ve todo; quien solo tiene "Análisis de mis muestras" ve únicamente lo que él mismo registró.
+const scopeOf = async (req: AuthRequest) => ((await hasAnyPermission(req.user!.role, ["analisisMuestras"], "read")) ? "all" : "own");
+const withScope = (handler: (req: Request, filters: AnalyticsFilters) => Promise<unknown>) =>
+  handle(async (req) => {
+    const base = clean(filters.parse(req.query)) as AnalyticsFilters;
+    const scoped = (await scopeOf(req as AuthRequest)) === "own" ? { ...base, ownerId: (req as AuthRequest).user!.id } : base;
+    return handler(req, scoped);
+  });
 
 // Solo lectura: lo ve quien tenga el módulo "Análisis de muestras" (por defecto Administrador, Geólogo administrador y Superintendencia).
 const router = Router();
-router.use(authenticate, requirePermission("analisisMuestras", "read"));
+router.use(authenticate, requirePermission(["analisisMuestras", "misAnalisisMuestras"], "read"));
 
-router.get("/overview", handle((req) => analyticsService.overview(parseFilters(req))));
-router.get("/grades", handle((req) => {
+router.get("/scope", handle(async (req) => ({ scope: await scopeOf(req as AuthRequest) })));
+
+router.get("/overview", withScope((_req, f) => analyticsService.overview(f)));
+router.get("/grades", withScope((req, f) => {
   const { groupBy } = z.object({ groupBy: z.enum(["area", "level", "labor", "objective"]).default("level") }).parse(req.query);
-  return analyticsService.grades(parseFilters(req), { ...clean(element.parse(req.query)), groupBy });
+  return analyticsService.grades(f, { ...clean(element.parse(req.query)), groupBy });
 }));
-router.get("/coverage", handle((req) => analyticsService.coverage(parseFilters(req))));
-router.get("/laboratories", handle((req) => analyticsService.laboratories(parseFilters(req))));
-router.get("/quality", handle((req) => analyticsService.quality(parseFilters(req), clean(element.parse(req.query)))));
-router.get("/estimation", handle((req) => {
-  const { levelId } = z.object({ levelId: z.string().trim().min(1).max(60).optional() }).parse(req.query);
-  return analyticsService.estimation(parseFilters(req), { ...clean(element.parse(req.query)), levelId });
+router.get("/coverage", withScope((_req, f) => analyticsService.coverage(f)));
+router.get("/laboratories", withScope((_req, f) => analyticsService.laboratories(f)));
+router.get("/quality", withScope((req, f) => analyticsService.quality(f, clean(element.parse(req.query)))));
+router.get("/estimation", withScope((req, f) => {
+  const { levelId, method } = z.object({ levelId: z.string().trim().min(1).max(60).optional(), method: z.enum(["idw", "kriging"]).optional() }).parse(req.query);
+  return analyticsService.estimation(f, { ...clean(element.parse(req.query)), levelId, method });
 }));
 
 export default router;
