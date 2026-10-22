@@ -149,6 +149,26 @@ export const photos = {
     return prisma.drillingPhoto.findMany({ where: { holeId }, orderBy: [{ createdAt: "asc" }] });
   },
 
+  // Revisa en disco que cada foto registrada tenga su archivo y su miniatura (para detectar archivos perdidos del volumen).
+  async integrity(holeId?: string) {
+    const rows = await prisma.drillingPhoto.findMany({
+      ...(holeId ? { where: { holeId } } : {}),
+      orderBy: [{ holeId: "asc" }, { sequence: "asc" }],
+      select: { id: true, code: true, holeId: true, fileName: true, thumbName: true, createdAt: true, hole: { select: { code: true } } },
+    });
+    const exists = (file: string) => fsp.access(file).then(() => true, () => false);
+    const missing: Array<{ id: string; code: string; hole: string; createdAt: Date; missing: Array<"file" | "thumb"> }> = [];
+    for (const row of rows) {
+      const dir = path.join(PHOTO_ROOT, row.holeId);
+      const lost: Array<"file" | "thumb"> = [];
+      if (!(await exists(path.join(dir, row.fileName)))) lost.push("file");
+      if (!(await exists(path.join(dir, row.thumbName)))) lost.push("thumb");
+      if (lost.length) missing.push({ id: row.id, code: row.code, hole: row.hole.code, createdAt: row.createdAt, missing: lost });
+    }
+    const folderExists = await exists(PHOTO_ROOT);
+    return { total: rows.length, missingCount: missing.length, mediaFolderExists: folderExists, missing: missing.slice(0, 500) };
+  },
+
   async create(
     holeId: string,
     meta: Record<string, unknown> & { id: string; reportId?: string; contentHash?: string },

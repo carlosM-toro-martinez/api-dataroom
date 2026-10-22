@@ -125,6 +125,7 @@ router.delete("/geology-reports/:id", geo, id, handle((req) => geologyReports.re
 router.get("/holes/:holeId/geology-log", geo, holeId, handle((req) => geologyLog.get(ctx.params(req).holeId)));
 router.put("/holes/:holeId/geology-log", geo, holeId, validate(schema.replaceGeologyLogSchema), handle((req) => geologyLog.replace(ctx.params(req).holeId, req.body.rows, ctx.uid(req))));
 
+router.get("/photos-integrity", geo, handle((req) => photos.integrity(typeof req.query["holeId"] === "string" ? req.query["holeId"] : undefined)));
 router.get("/holes/:holeId/photos", geo, holeId, handle((req) => photos.listByHole(ctx.params(req).holeId)));
 router.post(
   "/holes/:holeId/photos",
