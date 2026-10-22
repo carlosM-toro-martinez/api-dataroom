@@ -86,9 +86,9 @@ async function resolveElement(f: AnalyticsFilters, element?: string, unit?: stri
 }
 
 const GROUPS = {
-  area: { key: Prisma.sql`g.area_id`, label: Prisma.sql`g.area`, parent: Prisma.sql`NULL::text` },
-  level: { key: Prisma.sql`g.level_id`, label: Prisma.sql`g.level`, parent: Prisma.sql`g.area` },
-  labor: { key: Prisma.sql`g.labor_id`, label: Prisma.sql`g.labor`, parent: Prisma.sql`g.area || ' · ' || g.level` },
+  area: { key: Prisma.sql`g.area_id`, label: Prisma.sql`g.area`, parent: Prisma.sql`(CASE g.source WHEN 'INTERIOR' THEN 'Interior mina' ELSE 'Superficie' END)` },
+  level: { key: Prisma.sql`g.level_id`, label: Prisma.sql`g.level`, parent: Prisma.sql`g.area || ' · ' || (CASE g.source WHEN 'INTERIOR' THEN 'Interior mina' ELSE 'Superficie' END)` },
+  labor: { key: Prisma.sql`g.labor_id`, label: Prisma.sql`g.labor`, parent: Prisma.sql`g.area || ' · ' || g.level || ' · ' || (CASE g.source WHEN 'INTERIOR' THEN 'Interior mina' ELSE 'Superficie' END)` },
   objective: { key: Prisma.sql`g.objective`, label: Prisma.sql`g.objective`, parent: Prisma.sql`NULL::text` },
 } as const;
 export type GroupBy = keyof typeof GROUPS;
