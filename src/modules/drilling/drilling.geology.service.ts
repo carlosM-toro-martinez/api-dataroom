@@ -154,19 +154,35 @@ export const photos = {
     const rows = await prisma.drillingPhoto.findMany({
       ...(holeId ? { where: { holeId } } : {}),
       orderBy: [{ holeId: "asc" }, { sequence: "asc" }],
-      select: { id: true, code: true, holeId: true, fileName: true, thumbName: true, createdAt: true, hole: { select: { code: true } } },
+      select: { id: true, code: true, holeId: true, fileName: true, thumbName: true, mimeType: true, contentHash: true, createdAt: true, hole: { select: { code: true } } },
     });
     const exists = (file: string) => fsp.access(file).then(() => true, () => false);
-    const missing: Array<{ id: string; code: string; hole: string; createdAt: Date; missing: Array<"file" | "thumb"> }> = [];
+    const missing: Array<{ id: string; code: string; hole: string; holeId: string; contentHash: string | null; mimeType: string; createdAt: Date; missing: Array<"file" | "thumb"> }> = [];
     for (const row of rows) {
       const dir = path.join(PHOTO_ROOT, row.holeId);
       const lost: Array<"file" | "thumb"> = [];
       if (!(await exists(path.join(dir, row.fileName)))) lost.push("file");
       if (!(await exists(path.join(dir, row.thumbName)))) lost.push("thumb");
-      if (lost.length) missing.push({ id: row.id, code: row.code, hole: row.hole.code, createdAt: row.createdAt, missing: lost });
+      if (lost.length) missing.push({ id: row.id, code: row.code, hole: row.hole.code, holeId: row.holeId, contentHash: row.contentHash, mimeType: row.mimeType, createdAt: row.createdAt, missing: lost });
     }
     const folderExists = await exists(PHOTO_ROOT);
-    return { total: rows.length, missingCount: missing.length, mediaFolderExists: folderExists, missing: missing.slice(0, 500) };
+    return { total: rows.length, missingCount: missing.length, mediaFolderExists: folderExists, missing };
+  },
+
+  // Devuelve la imagen a un registro que ya existe (mismo código, mismo pozo) cuando su archivo se perdió del disco.
+  async restoreFile(id: string, files: { file?: UploadedFile | undefined; thumb?: UploadedFile | undefined }) {
+    const photo = await prisma.drillingPhoto.findUnique({ where: { id } });
+    if (!photo) throw new HttpError("Foto: no encontrada.", 404);
+    const { file, thumb } = files;
+    if (!file || !thumb) throw new HttpError("Falta la imagen o su miniatura.", 400);
+    if (!MIME_EXT[file.mimetype] || thumb.mimetype !== "image/jpeg") throw new HttpError("Formato de imagen no permitido (usa JPG, PNG o WEBP).", 400);
+    const dir = path.join(PHOTO_ROOT, photo.holeId);
+    await fsp.mkdir(dir, { recursive: true });
+    // Se escribe con los nombres que ya tiene el registro, así nada más cambia (código, reporte, tipo, comentarios).
+    await fsp.writeFile(path.join(dir, photo.fileName), file.buffer);
+    await fsp.writeFile(path.join(dir, photo.thumbName), thumb.buffer);
+    logger.info({ photoId: id, code: photo.code }, "Imagen restaurada en un registro existente");
+    return { id, code: photo.code, restored: true };
   },
 
   async create(

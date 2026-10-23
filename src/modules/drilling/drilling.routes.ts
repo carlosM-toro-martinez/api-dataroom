@@ -138,6 +138,16 @@ router.post(
     return photos.create(ctx.params(req).holeId, req.body, { file: files.file?.[0], thumb: files.thumb?.[0] }, ctx.uid(req));
   }, 201),
 );
+router.put(
+  "/photos/:id/file",
+  geo,
+  id,
+  photoUpload,
+  handle((req) => {
+    const files = (req as unknown as { files?: Record<string, Express.Multer.File[]> }).files ?? {};
+    return photos.restoreFile(ctx.params(req).id, { file: files.file?.[0], thumb: files.thumb?.[0] });
+  }),
+);
 router.patch("/photos/:id", geo, id, validate(schema.updatePhotoSchema), handle((req) => photos.update(ctx.params(req).id, req.body, ctx.uid(req))));
 router.delete("/photos/:id", geo, id, handle((req) => photos.remove(ctx.params(req).id)));
 router.get("/photos/:id/file", geo, id, vq(schema.photoFileQuerySchema), async (req: any, res: any) => {
