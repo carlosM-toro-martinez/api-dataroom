@@ -5,10 +5,10 @@ import { auditStorage, currentAuditContext, type AuditContext } from "./auditCon
 import { logger } from "./logger.js";
 
 // ─── Contexto de cada petición ───────────────────────────────────────────────
+// Detrás de Cloudflare, X-Forwarded-For trae la IP de Cloudflare: la IP real del cliente viene en CF-Connecting-IP.
 function clientIp(req: Request) {
-  const forwarded = req.headers["x-forwarded-for"];
-  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
-  return first || req.socket.remoteAddress || undefined;
+  const firstOf = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value)?.split(",")[0]?.trim();
+  return firstOf(req.headers["cf-connecting-ip"]) || firstOf(req.headers["x-forwarded-for"]) || req.socket.remoteAddress || undefined;
 }
 
 export function auditContextMiddleware(req: Request, res: Response, next: NextFunction) {
