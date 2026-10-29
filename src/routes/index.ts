@@ -13,12 +13,14 @@ import mediaRoutes from "../modules/media/media.routes.js";
 import rolesRoutes from "../modules/roles/roles.routes.js";
 import auditRoutes from "../modules/audit/audit.routes.js";
 import analyticsRoutes from "../modules/analytics/analytics.routes.js";
+import accessRoutes from "../modules/access/access.routes.js";
 
 const router = Router();
 
 router.use("/auth", authRoutes);
 router.use("/roles", rolesRoutes);
 router.use("/audit", auditRoutes);
+router.use("/access", accessRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/exploraciones", exploracionesRoutes);
 router.use("/mining-exploration", miningExplorationRoutes);
